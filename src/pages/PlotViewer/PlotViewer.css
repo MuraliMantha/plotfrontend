@@ -1,0 +1,33 @@
+.plot-number {
+  position: absolute;
+  color: #000;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px;
+  background: #f8f8f8;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.status-total { background: #e2e8f0; }
+.status-available { background: #c6f6d5; }
+.status-hold { background: #fefcbf; }
+.status-sold { background: #fed7d7; }
+.status-tentative { background: #fed7e2; }
+.status-cip { background: #e9d8fd; }
+.status-booked { background: #fbd38d; }
+.status-reserved { background: #bee3f8; }

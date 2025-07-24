@@ -320,22 +320,27 @@ const PlotViewer = () => {
 
   // 4. Update Plot Number Positions
   const updatePlotNumbers = () => {
-    const canvas = canvasRef.current;
-    const camera = cameraRef.current;
-    if (!canvas || !camera) return;
+  const canvas = canvasRef.current;
+  const camera = cameraRef.current;
+  if (!canvas || !camera) return;
 
-    const canvasRect = canvas.getBoundingClientRect();
-    const camOffsetX = camera.position.x;
-    const camOffsetY = camera.position.y;
-    plotNumberDivsRef.current.forEach((div) => {
-      const x = +div.dataset.centroidX - camOffsetX;
-      const y = +div.dataset.centroidY + camOffsetY;
-      div.style.left = `${canvasRect.left + x}px`;
-      div.style.top = `${canvasRect.top + y}px`;
-      div.style.position = 'absolute';
-      div.style.transform = 'translate(-50%, -50%)';
-    });
-  };
+  const camOffsetX = camera.position.x;
+  const camOffsetY = camera.position.y;
+
+  const canvasX = canvas.offsetLeft;
+  const canvasY = canvas.offsetTop;
+
+  plotNumberDivsRef.current.forEach((div) => {
+    const x = +div.dataset.centroidX - camOffsetX;
+    const y = +div.dataset.centroidY + camOffsetY;
+
+    div.style.left = `${canvasX + x}px`;
+    div.style.top = `${canvasY + y}px`;
+    div.style.position = 'absolute';
+    div.style.transform = 'translate(-50%, -50%)';
+  });
+};
+
 
   // 5. Zoom Handling
   const handleZoom = (zoomIn) => {

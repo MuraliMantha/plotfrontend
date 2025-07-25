@@ -166,7 +166,6 @@ const PlotViewer = () => {
       const my = (e.clientY - rect.top);
 
       // Convert to world coordinates
-      const camera = cameraRef.current;
       const worldX = camera.left + (mx / rect.width) * (camera.right - camera.left);
       const worldY = camera.top - (my / rect.height) * (camera.top - camera.bottom);
 

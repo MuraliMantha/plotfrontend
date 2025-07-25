@@ -4,7 +4,12 @@ import { Modal, Button, Form, Container } from 'react-bootstrap';
 import siteplan from '../../assets/siteplan.png';
 
 const PlotViewer = () => {
+  // REFS
   const canvasRef = useRef(null);
+  const canvasWrapperRef = useRef(null);
+  const plotLabelContainerRef = useRef(null);
+
+  // STATE
   const [plots, setPlots] = useState([]);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -22,6 +27,7 @@ const PlotViewer = () => {
   });
   const [lastLoadedGeoJSON, setLastLoadedGeoJSON] = useState(null);
 
+  // Internals
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
@@ -34,6 +40,13 @@ const PlotViewer = () => {
   const zoomRef = useRef(1);
   const minZoom = 0.4;
   const maxZoom = 2.5;
+
+  // For overlay
+  const [hoverData, setHoverData] = useState(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+
+  const [imageWidth, setImageWidth] = useState(null);
+  const [imageHeight, setImageHeight] = useState(null);
 
   // Helper: Clamp value
   const clamp = (val, min, max) => Math.max(min, Math.min(val, max));
@@ -62,7 +75,7 @@ const PlotViewer = () => {
       y += (coords[i][1] + coords[j][1]) * f;
     }
     area *= 3;
-    return area === 0 ? [0, 0] : [x / area, y / area]; // Prevent division by zero
+    return area === 0 ? [0, 0] : [x / area, y / area];
   };
 
   // 1. Setup Scene, Camera, Renderer, and Background
@@ -74,22 +87,27 @@ const PlotViewer = () => {
     img.onload = () => {
       const width = img.width;
       const height = img.height;
+      setImageWidth(width);
+      setImageHeight(height);
 
       // Scene
       const scene = new THREE.Scene();
       sceneRef.current = scene;
 
-      // Camera
-      const camera = new THREE.OrthographicCamera(0, width, height, 0, -100, 100);
-      camera.position.z = 10;
+      // Camera: Centered on image
+      const camera = new THREE.OrthographicCamera(
+        0, width, height, 0, -100, 100
+      );
+      camera.position.set(0, 0, 10);
       cameraRef.current = camera;
+      zoomRef.current = 1;
 
       // Renderer
       const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true, antialias: true });
       renderer.setSize(width, height);
       rendererRef.current = renderer;
 
-      // Siteplan texture
+      // Image plane
       const texture = new THREE.TextureLoader().load(siteplan);
       const material = new THREE.MeshBasicMaterial({ map: texture });
       const geometry = new THREE.PlaneGeometry(width, height);
@@ -97,13 +115,8 @@ const PlotViewer = () => {
       plane.position.set(width / 2, height / 2, -1);
       scene.add(plane);
 
-      // Initial render
-      renderer.render(scene, camera);
-
-      // Fetch plots
       fetchPlots();
 
-      // Animation loop
       const animate = () => {
         renderer.render(scene, camera);
         updatePlotNumbers();
@@ -128,7 +141,7 @@ const PlotViewer = () => {
     const handleMouseMove = (e) => {
       const img = imageRef.current;
       const camera = cameraRef.current;
-      const scene = sceneRef.current; // Fix: Use sceneRef.current
+      const scene = sceneRef.current;
       if (!img || !camera || !scene) return;
 
       // Panning
@@ -136,36 +149,39 @@ const PlotViewer = () => {
         const dx = e.clientX - lastMouseRef.current.x;
         const dy = e.clientY - lastMouseRef.current.y;
         lastMouseRef.current = { x: e.clientX, y: e.clientY };
-        camera.position.x -= dx;
-        camera.position.y += dy;
+        // Move camera by dx/dy in image space
+        const { width, height } = rendererRef.current.getSize(new THREE.Vector2());
+        camera.left -= dx;
+        camera.right -= dx;
+        camera.top -= dy;
+        camera.bottom -= dy;
+        camera.updateProjectionMatrix();
         updatePlotNumbers();
+        return;
       }
 
       // Hover overlay
       const rect = canvasRef.current.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) + camera.position.x;
-      const my = (e.clientY - rect.top) - camera.position.y;
-      mouseRef.current.x = (mx / img.width) * 2 - 1;
-      mouseRef.current.y = -((my) / img.height) * 2 + 1;
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+
+      // Convert to world coordinates
+      const camera = cameraRef.current;
+      const worldX = camera.left + (mx / rect.width) * (camera.right - camera.left);
+      const worldY = camera.top - (my / rect.height) * (camera.top - camera.bottom);
+
+      mouseRef.current.x = (mx / rect.width) * 2 - 1;
+      mouseRef.current.y = -((my / rect.height) * 2 - 1);
+
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData.isPlot));
-      const overlay = document.getElementById('plot-overlay');
+      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData && c.userData.isPlot));
       if (intersects.length > 0 && intersects[0].object.visible) {
+        setHoverData(intersects[0].object.userData);
+        setHoverPos({ x: e.clientX, y: e.clientY });
         canvasRef.current.style.cursor = 'pointer';
-        const plot = intersects[0].object.userData;
-        // Ensure plot has expected properties
-        overlay.innerHTML = `
-          <b>Plot No:</b> ${plot.plotNo || 'N/A'}<br>
-          <b>Area:</b> ${plot.area ? plot.area + ' sq.yd' : 'N/A'}<br>
-          <b>Status:</b> ${plot.status || 'N/A'}<br>
-          <b>Price:</b> ${plot.price ? '₹' + plot.price.toLocaleString() : 'N/A'}
-        `;
-        overlay.style.display = 'block';
-        overlay.style.left = `${e.clientX + 10}px`;
-        overlay.style.top = `${e.clientY + 10}px`;
       } else {
+        setHoverData(null);
         canvasRef.current.style.cursor = 'default';
-        overlay.style.display = 'none';
       }
     };
 
@@ -173,38 +189,57 @@ const PlotViewer = () => {
       if (isDraggingRef.current) return;
       const img = imageRef.current;
       const camera = cameraRef.current;
-      const scene = sceneRef.current; // Fix: Use sceneRef.current
+      const scene = sceneRef.current;
       if (!img || !camera || !scene) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) + camera.position.x;
-      const my = (e.clientY - rect.top) - camera.position.y;
-      mouseRef.current.x = (mx / img.width) * 2 - 1;
-      mouseRef.current.y = -((my) / img.height) * 2 + 1;
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+
+      // Convert to NDC
+      mouseRef.current.x = (mx / rect.width) * 2 - 1;
+      mouseRef.current.y = -((my / rect.height) * 2 - 1);
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData.isPlot));
+      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData && c.userData.isPlot));
       if (intersects.length > 0 && intersects[0].object.visible) {
         setSelectedPlot(intersects[0].object.userData);
         setShowPlotDialog(true);
       }
     };
 
-    const handleMouseLeave = () => {
-      document.getElementById('plot-overlay').style.display = 'none';
-    };
-
     const handleWheel = (e) => {
       e.preventDefault();
+      const camera = cameraRef.current;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
       const zoomIn = e.deltaY < 0;
-      zoomRef.current = clamp(zoomRef.current * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
-      updateZoomCamera();
+      const prevZoom = zoomRef.current;
+      const newZoom = clamp(prevZoom * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
+      if (newZoom === prevZoom) return;
+      zoomRef.current = newZoom;
+
+      // Keep mouse world point stationary during zoom
+      const mxNorm = mouseX / rect.width;
+      const myNorm = mouseY / rect.height;
+      const wx = camera.left + mxNorm * (camera.right - camera.left);
+      const wy = camera.top - myNorm * (camera.top - camera.bottom);
+
+      // New bounds
+      const width = imageRef.current.width / newZoom;
+      const height = imageRef.current.height / newZoom;
+      camera.left = wx - mxNorm * width;
+      camera.right = wx + (1 - mxNorm) * width;
+      camera.top = wy + (1 - myNorm) * height;
+      camera.bottom = wy - myNorm * height;
+      camera.updateProjectionMatrix();
+      updatePlotNumbers();
     };
 
     canvasRef.current?.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     canvasRef.current?.addEventListener('mousemove', handleMouseMove);
     canvasRef.current?.addEventListener('click', handleClick);
-    canvasRef.current?.addEventListener('mouseleave', handleMouseLeave);
-    canvasRef.current?.addEventListener('wheel', handleWheel);
+    canvasRef.current?.addEventListener('wheel', handleWheel, { passive: false });
 
     // Cleanup
     return () => {
@@ -212,9 +247,9 @@ const PlotViewer = () => {
       window.removeEventListener('mouseup', handleMouseUp);
       canvasRef.current?.removeEventListener('mousemove', handleMouseMove);
       canvasRef.current?.removeEventListener('click', handleClick);
-      canvasRef.current?.removeEventListener('mouseleave', handleMouseLeave);
       canvasRef.current?.removeEventListener('wheel', handleWheel);
     };
+    // eslint-disable-next-line
   }, []);
 
   // 2. Fetch Plots and Poll for Updates
@@ -231,16 +266,15 @@ const PlotViewer = () => {
         return res.json();
       })
       .then((data) => {
-        console.log('Fetched plots:', data.features); // Debug: Log fetched data
         setPlots(data.features);
         setLastLoadedGeoJSON(data);
       })
       .catch((err) => {
-        console.error('Fetch error:', err);
         setStatusMsg('Unauthorized or Error loading plots!');
       });
   };
 
+  // Poll for updates every 5s
   useEffect(() => {
     const interval = setInterval(() => {
       fetch('http://localhost:5000/api/plot', {
@@ -256,17 +290,16 @@ const PlotViewer = () => {
         })
         .then((data) => {
           if (JSON.stringify(data) !== JSON.stringify(lastLoadedGeoJSON)) {
-            console.log('GeoJSON updated:', data.features); // Debug: Log updates
             setPlots(data.features);
             setLastLoadedGeoJSON(data);
           }
         })
         .catch((err) => {
-          console.error('Polling error:', err);
           setStatusMsg('Error polling plots!');
         });
     }, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line
   }, [lastLoadedGeoJSON]);
 
   // 3. Update Plot Meshes and Labels
@@ -280,7 +313,7 @@ const PlotViewer = () => {
     scene.children
       .filter((child) => child.userData && child.userData.isPlot)
       .forEach((mesh) => scene.remove(mesh));
-    plotNumberDivsRef.current.forEach((div) => div.remove());
+    plotLabelContainerRef.current && (plotLabelContainerRef.current.innerHTML = '');
     plotNumberDivsRef.current = [];
 
     // Add new plot meshes and labels
@@ -288,7 +321,7 @@ const PlotViewer = () => {
       const coords = feature.geometry.coordinates[0];
       const shape = new THREE.Shape();
       coords.forEach(([x, y], idx) => {
-        const yFlipped = imageRef.current.height - y; // Flip Y for Three.js
+        const yFlipped = imageRef.current.height - y;
         if (idx === 0) shape.moveTo(x, yFlipped);
         else shape.lineTo(x, yFlipped);
       });
@@ -299,126 +332,99 @@ const PlotViewer = () => {
         transparent: true,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { ...feature.properties, isPlot: true }; // Ensure userData is set
-      console.log('Mesh userData:', mesh.userData); // Debug: Log userData
+      mesh.userData = { ...feature.properties, isPlot: true };
       scene.add(mesh);
 
-      // Add plot number label
+      // Plot number label
       const centroid = polygonCentroid(coords);
       const div = document.createElement('div');
       div.className = 'plot-number';
       div.innerText = feature.properties.plotNo;
-      div.dataset.centroidX = centroid[0];
-      div.dataset.centroidY =  centroid[1]; // Flip Y
-      document.body.appendChild(div);
+      div.dataset.worldX = centroid[0];
+      div.dataset.worldY = imageRef.current.height - centroid[1];
+      div.style.position = 'absolute';
+      div.style.pointerEvents = 'none';
+      div.style.color = '#000';
+      div.style.background = 'rgba(255,255,255,0.82)';
+      div.style.padding = '4px 8px';
+      div.style.borderRadius = '4px';
+      div.style.fontSize = '12px';
+      div.style.fontWeight = 'bold';
+      div.style.userSelect = 'none';
+      plotLabelContainerRef.current && plotLabelContainerRef.current.appendChild(div);
       plotNumberDivsRef.current.push(div);
     });
 
     updatePlotNumbers();
     renderer.render(scene, camera);
-  }, [plots]);
+    // eslint-disable-next-line
+  }, [plots, imageWidth, imageHeight]);
 
   // 4. Update Plot Number Positions
   const updatePlotNumbers = () => {
-  const canvas = canvasRef.current;
-  const camera = cameraRef.current;
-  if (!canvas || !camera) return;
-
-  const camOffsetX = camera.position.x;
-  const camOffsetY = camera.position.y;
-
-  const canvasX = canvas.offsetLeft;
-  const canvasY = canvas.offsetTop;
-
-  plotNumberDivsRef.current.forEach((div) => {
-    const x = +div.dataset.centroidX - camOffsetX;
-    const y = +div.dataset.centroidY + camOffsetY;
-
-    div.style.left = `${canvasX + x}px`;
-    div.style.top = `${canvasY + y}px`;
-    div.style.position = 'absolute';
-    div.style.transform = 'translate(-50%, -50%)';
-  });
-};
-
-
-  // 5. Zoom Handling
-  const handleZoom = (zoomIn) => {
-    zoomRef.current = clamp(zoomRef.current * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
-    updateZoomCamera();
-  };
-
-  const updateZoomCamera = () => {
-    const img = imageRef.current;
     const camera = cameraRef.current;
     const renderer = rendererRef.current;
-    if (!img || !camera || !renderer) return;
+    if (!camera || !renderer) return;
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+    const rect = wrapper.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
 
-    const width = img.width;
-    const height = img.height;
-    camera.left = 0 - (width * (zoomRef.current - 1) / 2) + camera.position.x;
-    camera.right = width + (width * (zoomRef.current - 1) / 2) + camera.position.x;
-    camera.top = 0 - (height * (zoomRef.current - 1) / 2) + camera.position.y;
-    camera.bottom = height + (height * (zoomRef.current - 1) / 2) + camera.position.y;
+    plotNumberDivsRef.current.forEach(div => {
+      const wx = parseFloat(div.dataset.worldX);
+      const wy = parseFloat(div.dataset.worldY);
+
+      // Project world to NDC
+      const vector = new THREE.Vector3(wx, wy, 0);
+      vector.project(camera);
+
+      // Map NDC to screen inside the wrapper
+      const screenX = (vector.x * 0.5 + 0.5) * w;
+      const screenY = (1 - (vector.y * 0.5 + 0.5)) * h;
+
+      // Hide if out of bounds
+      if (screenX < 0 || screenY < 0 || screenX > w || screenY > h) {
+        div.style.display = 'none';
+      } else {
+        div.style.display = 'block';
+        div.style.left = `${screenX}px`;
+        div.style.top = `${screenY}px`;
+        div.style.transform = 'translate(-50%,-50%)';
+      }
+    });
+  };
+
+  // 5. Zoom Handling for Toolbar
+  const handleZoom = (zoomIn) => {
+    const camera = cameraRef.current;
+    const centerX = (camera.left + camera.right) / 2;
+    const centerY = (camera.top + camera.bottom) / 2;
+    const prevZoom = zoomRef.current;
+    const newZoom = clamp(prevZoom * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
+    if (newZoom === prevZoom) return;
+    zoomRef.current = newZoom;
+    const width = imageRef.current.width / newZoom;
+    const height = imageRef.current.height / newZoom;
+    camera.left = centerX - width / 2;
+    camera.right = centerX + width / 2;
+    camera.top = centerY + height / 2;
+    camera.bottom = centerY - height / 2;
     camera.updateProjectionMatrix();
-    renderer.render(sceneRef.current, camera);
     updatePlotNumbers();
   };
 
+  // 6. Reset Handler
   const handleReset = () => {
     const img = imageRef.current;
     const camera = cameraRef.current;
-    const renderer = rendererRef.current;
-    if (!img || !camera || !renderer) return;
-
+    if (!img || !camera) return;
     zoomRef.current = 1;
-    camera.position.set(0, 0, 10);
     camera.left = 0;
     camera.right = img.width;
     camera.top = img.height;
     camera.bottom = 0;
     camera.updateProjectionMatrix();
-    renderer.render(sceneRef.current, camera);
     updatePlotNumbers();
-  };
-
-  // 6. Filter Plots
-  const handleFilterSubmit = (e) => {
-    e.preventDefault();
-    fetch('http://localhost:5000/api/plot', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Unauthorized');
-        return res.json();
-      })
-      .then((data) => {
-        const plotNos = filters.plotNos
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        let filtered = data.features.filter((p) => {
-          const props = p.properties;
-          return (
-            (!plotNos.length || plotNos.includes(String(props.plotNo))) &&
-            (filters.status === 'all' || props.status.toLowerCase() === filters.status.toLowerCase()) &&
-            (!filters.facing || props.facing.toLowerCase().includes(filters.facing.toLowerCase())) &&
-            (!filters.plotTypes || props.plotTypes.toLowerCase().includes(filters.plotTypes.toLowerCase())) &&
-            (!filters.minArea || props.area >= parseFloat(filters.minArea)) &&
-            (!filters.maxArea || props.area <= parseFloat(filters.maxArea))
-          );
-        });
-        setPlots(filtered);
-        setShowFilterModal(false);
-      })
-      .catch((err) => {
-        console.error('Filter error:', err);
-        setStatusMsg('Error filtering plots!');
-      });
   };
 
   // 7. Status Bar
@@ -457,7 +463,45 @@ const PlotViewer = () => {
     );
   };
 
-  // 8. Enquiry Submit
+  // 8. Filter Plots
+  const handleFilterSubmit = (e) => {
+    e.preventDefault();
+    fetch('http://localhost:5000/api/plot', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Unauthorized');
+        return res.json();
+      })
+      .then((data) => {
+        const plotNos = filters.plotNos
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let filtered = data.features.filter((p) => {
+          const props = p.properties;
+          return (
+            (!plotNos.length || plotNos.includes(String(props.plotNo))) &&
+            (filters.status === 'all' || props.status.toLowerCase() === filters.status.toLowerCase()) &&
+            (!filters.facing || props.facing.toLowerCase().includes(filters.facing.toLowerCase())) &&
+            (!filters.plotTypes || props.plotTypes.toLowerCase().includes(filters.plotTypes.toLowerCase())) &&
+            (!filters.minArea || props.area >= parseFloat(filters.minArea)) &&
+            (!filters.maxArea || props.area <= parseFloat(filters.maxArea))
+          );
+        });
+        setPlots(filtered);
+        setShowFilterModal(false);
+      })
+      .catch((err) => {
+        setStatusMsg('Error filtering plots!');
+      });
+  };
+
+  // 9. Booking Submit
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -475,25 +519,61 @@ const PlotViewer = () => {
         setStatusMsg('Error submitting enquiry!');
       }
     } catch (err) {
-      console.error('Booking error:', err);
       setStatusMsg('Error submitting enquiry!');
     }
   };
 
+  // ---- RENDER ----
   return (
     <Container fluid style={{ height: '100vh', background: '#1f2937', padding: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Status Message */}
       <div style={{ color: '#16a34a', fontWeight: '500', padding: '8px', textAlign: 'center' }}>{statusMsg}</div>
       {/* Status Bar */}
       <div style={{ padding: '8px', background: '#fff', textAlign: 'center' }}>{renderStatusBar()}</div>
-      {/* Canvas */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 0, minWidth: 0 }}>
-        <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+      {/* Canvas + Labels */}
+      <div
+        ref={canvasWrapperRef}
+        style={{
+          position: 'relative',
+          width: imageWidth ? `${imageWidth}px` : '100%',
+          height: imageHeight ? `${imageHeight}px` : '100%',
+          margin: '0 auto',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#1f2937',
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
+        <canvas ref={canvasRef} style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }} />
+        {/* Plot Number Overlay Container */}
+        <div ref={plotLabelContainerRef} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 11 }} />
+        {/* Hover Overlay */}
+        {hoverData && (
+          <div
+            style={{
+              position: 'fixed',
+              left: hoverPos.x + 16,
+              top: hoverPos.y + 16,
+              background: '#fff',
+              padding: '10px',
+              borderRadius: '6px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+              zIndex: 1001,
+              pointerEvents: 'none'
+            }}
+          >
+            <b>Plot No:</b> {hoverData.plotNo || 'N/A'}<br />
+            <b>Area:</b> {hoverData.area ? hoverData.area + ' sq.yd' : 'N/A'}<br />
+            <b>Status:</b> {hoverData.status || 'N/A'}<br />
+            <b>Price:</b> {hoverData.price ? '₹' + hoverData.price.toLocaleString() : 'N/A'}
+          </div>
+        )}
       </div>
-      {/* Hover Overlay */}
-      <div id="plot-overlay" style={{ position: 'absolute', display: 'none', background: '#fff', padding: '8px', borderRadius: '4px', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', zIndex: 1000 }} />
       {/* Toolbar */}
-      <div style={{ position: 'absolute', bottom: '16px', right: '16px', display: 'flex', gap: '8px' }}>
+      <div style={{ position: 'absolute', bottom: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 2000 }}>
         <Button variant="light" onClick={() => handleZoom(true)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>+</Button>
         <Button variant="light" onClick={() => handleZoom(false)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>−</Button>
         <Button variant="light" onClick={() => setShowFilterModal(true)} style={{ padding: '8px 16px', fontSize: '1rem', borderRadius: '6px' }}>▼ Filter</Button>
@@ -572,8 +652,8 @@ const PlotViewer = () => {
             >
               Reset Filters
             </Button>
-        </Form>
-      </Modal.Body>
+          </Form>
+        </Modal.Body>
       </Modal>
       {/* Plot Dialog */}
       <Modal show={showPlotDialog} onHide={() => setShowPlotDialog(false)} centered>
@@ -594,7 +674,7 @@ const PlotViewer = () => {
               <div><b>Survey No:</b> {selectedPlot.surveyNo || 'N/A'}</div>
               <div><b>Location Pin:</b> {selectedPlot.locationPin || 'N/A'}</div>
               <div><b>Address:</b> {selectedPlot.address || 'N/A'}</div>
-              {selectedPlot.status.toLowerCase() === 'available' && (
+              {selectedPlot.status?.toLowerCase() === 'available' && (
                 <Button
                   variant="success"
                   onClick={() => {

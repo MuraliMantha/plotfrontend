@@ -145,20 +145,30 @@ const PlotViewer = () => {
       if (!img || !camera || !scene) return;
 
       // Panning
-      if (isDraggingRef.current) {
-        const dx = e.clientX - lastMouseRef.current.x;
-        const dy = e.clientY - lastMouseRef.current.y;
-        lastMouseRef.current = { x: e.clientX, y: e.clientY };
-        // Move camera by dx/dy in image space
-        const { width, height } = rendererRef.current.getSize(new THREE.Vector2());
-        camera.left -= dx;
-        camera.right -= dx;
-        camera.top -= dy;
-        camera.bottom -= dy;
-        camera.updateProjectionMatrix();
-        updatePlotNumbers();
-        return;
-      }
+if (isDraggingRef.current) {
+  const dx = e.clientX - lastMouseRef.current.x;
+  const dy = e.clientY - lastMouseRef.current.y;
+  lastMouseRef.current = { x: e.clientX, y: e.clientY };
+
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  const zoom = zoomRef.current;
+  const img = imageRef.current;
+
+  // Convert dx/dy in pixels to world units
+  const worldDX = (dx / rect.width) * (camera.right - camera.left);
+  const worldDY = (dy / rect.height) * (camera.top - camera.bottom);
+
+  camera.left -= worldDX;
+camera.right -= worldDX;
+camera.top += worldDY;
+camera.bottom += worldDY;
+
+  camera.updateProjectionMatrix();
+  updatePlotNumbers();
+  return;
+}
+
 
       // Hover overlay
       const rect = canvasRef.current.getBoundingClientRect();
@@ -206,33 +216,50 @@ const PlotViewer = () => {
     };
 
     const handleWheel = (e) => {
-      e.preventDefault();
-      const camera = cameraRef.current;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const zoomIn = e.deltaY < 0;
-      const prevZoom = zoomRef.current;
-      const newZoom = clamp(prevZoom * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
-      if (newZoom === prevZoom) return;
-      zoomRef.current = newZoom;
+  e.preventDefault();
+  const camera = cameraRef.current;
+  const rect = canvasRef.current.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
 
-      // Keep mouse world point stationary during zoom
-      const mxNorm = mouseX / rect.width;
-      const myNorm = mouseY / rect.height;
-      const wx = camera.left + mxNorm * (camera.right - camera.left);
-      const wy = camera.top - myNorm * (camera.top - camera.bottom);
+  const zoomIn = e.deltaY < 0;
+  const prevZoom = zoomRef.current;
+  const newZoom = clamp(prevZoom * (zoomIn ? 1.1 : 1 / 1.1), minZoom, maxZoom);
+  if (newZoom === prevZoom) return;
+  zoomRef.current = newZoom;
 
-      // New bounds
-      const width = imageRef.current.width / newZoom;
-      const height = imageRef.current.height / newZoom;
-      camera.left = wx - mxNorm * width;
-      camera.right = wx + (1 - mxNorm) * width;
-      camera.top = wy + (1 - myNorm) * height;
-      camera.bottom = wy - myNorm * height;
-      camera.updateProjectionMatrix();
-      updatePlotNumbers();
-    };
+  // Mouse position in normalized device coordinates
+  const ndcX = (mouseX / rect.width) * 2 - 1;
+  const ndcY = -((mouseY / rect.height) * 2 - 1);
+
+  // World position before zoom
+  const worldBefore = new THREE.Vector3(ndcX, ndcY, 0).unproject(camera);
+
+  // Update camera size
+  const width = imageRef.current.width / newZoom;
+  const height = imageRef.current.height / newZoom;
+  const cx = (camera.left + camera.right) / 2;
+  const cy = (camera.top + camera.bottom) / 2;
+  camera.left = cx - width / 2;
+  camera.right = cx + width / 2;
+  camera.top = cy + height / 2;
+  camera.bottom = cy - height / 2;
+  camera.updateProjectionMatrix();
+
+  // World position after zoom
+  const worldAfter = new THREE.Vector3(ndcX, ndcY, 0).unproject(camera);
+  const delta = worldBefore.sub(worldAfter);
+
+  // Apply correction to keep mouse anchor point stable
+  camera.left += delta.x;
+  camera.right += delta.x;
+  camera.top += delta.y;
+  camera.bottom += delta.y;
+  camera.updateProjectionMatrix();
+
+  updatePlotNumbers();
+};
+
 
     canvasRef.current?.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
@@ -361,37 +388,35 @@ const PlotViewer = () => {
 
   // 4. Update Plot Number Positions
   const updatePlotNumbers = () => {
-    const camera = cameraRef.current;
-    const renderer = rendererRef.current;
-    if (!camera || !renderer) return;
-    const wrapper = canvasWrapperRef.current;
-    if (!wrapper) return;
-    const rect = wrapper.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
+  const camera = cameraRef.current;
+  const canvas = canvasRef.current;
+  const wrapper = canvasWrapperRef.current;
+  if (!camera || !canvas || !wrapper) return;
 
-    plotNumberDivsRef.current.forEach(div => {
-      const wx = parseFloat(div.dataset.worldX);
-      const wy = parseFloat(div.dataset.worldY);
+  const rect = wrapper.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
 
-      // Project world to NDC
-      const vector = new THREE.Vector3(wx, wy, 0);
-      vector.project(camera);
+  plotNumberDivsRef.current.forEach(div => {
+    const wx = parseFloat(div.dataset.worldX);
+    const wy = parseFloat(div.dataset.worldY);
 
-      // Map NDC to screen inside the wrapper
-      const screenX = (vector.x * 0.5 + 0.5) * w;
-      const screenY = (1 - (vector.y * 0.5 + 0.5)) * h;
+    const vector = new THREE.Vector3(wx, wy, 0).project(camera);
+    const screenX = (vector.x * 0.5 + 0.5) * w;
+    const screenY = (1 - (vector.y * 0.5 + 0.5)) * h;
 
-      // Hide if out of bounds
-      if (screenX < 0 || screenY < 0 || screenX > w || screenY > h) {
-        div.style.display = 'none';
-      } else {
-        div.style.display = 'block';
-        div.style.left = `${screenX}px`;
-        div.style.top = `${screenY}px`;
-        div.style.transform = 'translate(-50%,-50%)';
-      }
-    });
-  };
+    if (screenX < 0 || screenY < 0 || screenX > w || screenY > h) {
+      div.style.display = 'none';
+    } else {
+      div.style.display = 'block';
+      div.style.left = `${screenX}px`;
+      div.style.top = `${screenY}px`;
+      div.style.transform = 'translate(-50%, -50%)';
+    }
+  });
+};
+
+
 
   // 5. Zoom Handling for Toolbar
   const handleZoom = (zoomIn) => {
@@ -532,23 +557,32 @@ const PlotViewer = () => {
       {/* Canvas + Labels */}
       <div
         ref={canvasWrapperRef}
-        style={{
-          position: 'relative',
-          width: imageWidth ? `${imageWidth}px` : '100%',
-          height: imageHeight ? `${imageHeight}px` : '100%',
-          margin: '0 auto',
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#1f2937',
-          minHeight: 0,
-          minWidth: 0,
-        }}
-      >
-        <canvas ref={canvasRef} style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }} />
-        {/* Plot Number Overlay Container */}
-        <div ref={plotLabelContainerRef} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 11 }} />
+  style={{
+    position: 'relative',
+    width: imageWidth ? `${imageWidth}px` : '100%',
+    height: imageHeight ? `${imageHeight}px` : '100%',
+    margin: '0 auto',
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#1f2937',
+    overflow: 'hidden' // ✅ Prevent overflow
+  }}
+>
+  <canvas ref={canvasRef} style={{ display: 'block' }} />
+  <div
+    ref={plotLabelContainerRef}
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+      zIndex: 11
+    }}
+  />
         {/* Hover Overlay */}
         {hoverData && (
           <div

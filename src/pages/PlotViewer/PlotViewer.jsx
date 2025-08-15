@@ -11,6 +11,7 @@ const PlotViewer = () => {
 
   // STATE
   const [plots, setPlots] = useState([]);
+  
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPlotDialog, setShowPlotDialog] = useState(false);
@@ -689,87 +690,797 @@ camera.bottom += worldDY;
         </Modal.Body>
       </Modal>
       {/* Plot Dialog */}
-      <Modal show={showPlotDialog} onHide={() => setShowPlotDialog(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Plot {selectedPlot?.plotNo}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedPlot && (
-            <div>
-              <div><b>Status:</b> {selectedPlot.status || 'N/A'}</div>
-              <div><b>Facing:</b> {selectedPlot.facing || 'N/A'}</div>
-              <div><b>Measurements:</b> {selectedPlot.measurements || 'N/A'}</div>
-              <div><b>Area:</b> {selectedPlot.area ? `${selectedPlot.area} sq.yd` : 'N/A'}</div>
-              <div><b>Boundaries:</b> {selectedPlot.boundaries || 'N/A'}</div>
-              <div><b>Notes:</b> {selectedPlot.notes || 'N/A'}</div>
-              <div><b>Plot Type(s):</b> {selectedPlot.plotTypes || 'N/A'}</div>
-              <div><b>Pricing:</b> {selectedPlot.price ? `₹${selectedPlot.price.toLocaleString()}` : 'N/A'}</div>
-              <div><b>Survey No:</b> {selectedPlot.surveyNo || 'N/A'}</div>
-              <div><b>Location Pin:</b> {selectedPlot.locationPin || 'N/A'}</div>
-              <div><b>Address:</b> {selectedPlot.address || 'N/A'}</div>
-              {selectedPlot.status?.toLowerCase() === 'available' && (
-                <Button
-                  variant="success"
-                  onClick={() => {
-                    setShowBookingModal(true);
-                    setShowPlotDialog(false);
-                  }}
-                  style={{ marginTop: '16px', width: '100%' }}
-                >
-                  Book This Plot
-                </Button>
-              )}
+    <Modal 
+  show={showPlotDialog} 
+  onHide={() => setShowPlotDialog(false)} 
+  centered 
+  size="lg"
+  style={{ 
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  }}
+>
+  <Modal.Header 
+    closeButton 
+    style={{ 
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: 'white',
+      border: 'none',
+      borderRadius: '0.375rem 0.375rem 0 0',
+      padding: '1.5rem'
+    }}
+  >
+    <Modal.Title 
+      style={{ 
+        fontSize: '1.5rem', 
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem'
+      }}
+    >
+      📍 Plot {selectedPlot?.plotNo}
+      {selectedPlot?.status && (
+        <span 
+          style={{ 
+            backgroundColor: selectedPlot.status?.toLowerCase() === 'available' ? '#28a745' : 
+                           selectedPlot.status?.toLowerCase() === 'booked' ? '#ffc107' : 
+                           selectedPlot.status?.toLowerCase() === 'sold' ? '#dc3545' : '#6c757d',
+            color: 'white',
+            padding: '0.375rem 0.75rem',
+            borderRadius: '1.25rem',
+            fontSize: '0.75rem',
+            fontWeight: '600'
+          }}
+        >
+          {selectedPlot.status}
+        </span>
+      )}
+    </Modal.Title>
+  </Modal.Header>
+  
+  <Modal.Body 
+    style={{ 
+      padding: '0', 
+      background: '#f8f9fa',
+      maxHeight: '70vh',
+      overflowY: 'auto'
+    }}
+  >
+    {selectedPlot && (
+      <div style={{ padding: '1.5rem' }}>
+        
+        {/* Price Highlight Card */}
+        <div 
+          style={{ 
+            background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+            color: 'white',
+            borderRadius: '0.75rem',
+            padding: '2rem',
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+            boxShadow: '0 0.5rem 2rem rgba(17, 153, 142, 0.3)'
+          }}
+        >
+          <h3 
+            style={{ 
+              margin: '0 0 0.5rem 0', 
+              fontSize: '2.2rem', 
+              fontWeight: '700' 
+            }}
+          >
+            {selectedPlot.price ? 
+              (selectedPlot.price >= 10000000 ? 
+                `₹${(selectedPlot.price / 10000000).toFixed(2)} Cr` : 
+                selectedPlot.price >= 100000 ? 
+                `₹${(selectedPlot.price / 100000).toFixed(2)} L` : 
+                `₹${selectedPlot.price.toLocaleString()}`
+              ) : 'Price on Request'
+            }
+          </h3>
+          <p 
+            style={{ 
+              margin: '0', 
+              fontSize: '1.1rem', 
+              opacity: '0.9' 
+            }}
+          >
+            {selectedPlot.area ? `${selectedPlot.area} sq.yd` : 'Area details available'}
+          </p>
+        </div>
+
+        {/* Two Column Layout */}
+        <div className="row" style={{ marginBottom: '1.5rem' }}>
+          
+          {/* Property Details Column */}
+          <div className="col-md-6" style={{ marginBottom: '1.25rem' }}>
+            <div 
+              style={{ 
+                backgroundColor: 'white',
+                borderRadius: '0.75rem',
+                overflow: 'hidden',
+                boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+                height: '100%',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <div 
+                style={{ 
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  padding: '1rem 1.25rem',
+                  fontWeight: '600',
+                  fontSize: '1.1rem'
+                }}
+              >
+                🏗️ Property Details
+              </div>
+              <div style={{ padding: '1.25rem' }}>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    FACING:
+                  </div>
+                  <div 
+                    style={{ 
+                      fontSize: '1.05rem', 
+                      color: '#212529',
+                      fontWeight: '500'
+                    }}
+                  >
+                    🧭 {selectedPlot.facing || 'N/A'}
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    MEASUREMENTS:
+                  </div>
+                  <div 
+                    style={{ 
+                      fontSize: '1.05rem', 
+                      color: '#212529',
+                      fontWeight: '500'
+                    }}
+                  >
+                    📐 {selectedPlot.measurements || 'N/A'}
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '0' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.5rem'
+                    }}
+                  >
+                    PLOT TYPE(S):
+                  </div>
+                  <div>
+                    {selectedPlot.plotTypes ? 
+                      selectedPlot.plotTypes.split(',').map((type, index) => (
+                        <span 
+                          key={index}
+                          style={{ 
+                            backgroundColor: '#667eea',
+                            color: 'white',
+                            padding: '0.375rem 0.75rem',
+                            borderRadius: '1.25rem',
+                            fontSize: '0.8rem',
+                            fontWeight: '500',
+                            marginRight: '0.5rem',
+                            marginBottom: '0.25rem',
+                            display: 'inline-block'
+                          }}
+                        >
+                          {type.trim()}
+                        </span>
+                      )) : <span style={{ color: '#6c757d' }}>N/A</span>
+                    }
+                  </div>
+                </div>
+                
+              </div>
             </div>
-          )}
-        </Modal.Body>
-      </Modal>
-      {/* Booking Modal */}
-      <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Book Plot {selectedPlot?.plotNo}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form onSubmit={handleBookingSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Name</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Phone</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Email</Form.Label>
-              <Form.Control
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Message</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              />
-            </Form.Group>
-            <Button variant="primary" type="submit" style={{ background: 'linear-gradient(to right, #4f46e5, #3b82f6)', border: 'none' }}>
-              Submit Enquiry
+          </div>
+
+          {/* Location Details Column */}
+          <div className="col-md-6" style={{ marginBottom: '1.25rem' }}>
+            <div 
+              style={{ 
+                backgroundColor: 'white',
+                borderRadius: '0.75rem',
+                overflow: 'hidden',
+                boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+                height: '100%',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <div 
+                style={{ 
+                  background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                  color: 'white',
+                  padding: '1rem 1.25rem',
+                  fontWeight: '600',
+                  fontSize: '1.1rem'
+                }}
+              >
+                📍 Location & Legal
+              </div>
+              <div style={{ padding: '1.25rem' }}>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    SURVEY NO:
+                  </div>
+                  <div 
+                    style={{ 
+                      fontSize: '1.05rem', 
+                      color: '#212529',
+                      fontWeight: '500'
+                    }}
+                  >
+                    📋 {selectedPlot.surveyNo || 'N/A'}
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    LOCATION PIN:
+                  </div>
+                  <div 
+                    style={{ 
+                      fontSize: '0.95rem', 
+                      color: '#212529',
+                      fontWeight: '500',
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    🎯 {selectedPlot.locationPin || 'N/A'}
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '0' }}>
+                  <div 
+                    style={{ 
+                      color: '#495057', 
+                      fontSize: '0.85rem', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    ADDRESS:
+                  </div>
+                  <div 
+                    style={{ 
+                      fontSize: '1rem', 
+                      color: '#212529',
+                      lineHeight: '1.5',
+                      fontWeight: '500'
+                    }}
+                  >
+                    🏠 {selectedPlot.address || 'N/A'}
+                  </div>
+                </div>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Information */}
+        <div 
+          style={{ 
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            overflow: 'hidden',
+            boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+            marginBottom: '1.5rem'
+          }}
+        >
+          <div 
+            style={{ 
+              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+              color: 'white',
+              padding: '1rem 1.25rem',
+              fontWeight: '600',
+              fontSize: '1.1rem'
+            }}
+          >
+            ℹ️ Additional Information
+          </div>
+          <div style={{ padding: '1.25rem' }}>
+            <div className="row">
+              <div className="col-md-6" style={{ marginBottom: '1rem' }}>
+                <div 
+                  style={{ 
+                    color: '#495057', 
+                    fontSize: '0.85rem', 
+                    fontWeight: '600',
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                    marginBottom: '0.25rem'
+                  }}
+                >
+                  BOUNDARIES:
+                </div>
+                <div 
+                  style={{ 
+                    fontSize: '1rem', 
+                    color: '#212529',
+                    lineHeight: '1.5',
+                    fontWeight: '500'
+                  }}
+                >
+                  🔲 {selectedPlot.boundaries || 'N/A'}
+                </div>
+              </div>
+              <div className="col-md-6" style={{ marginBottom: '1rem' }}>
+                <div 
+                  style={{ 
+                    color: '#495057', 
+                    fontSize: '0.85rem', 
+                    fontWeight: '600',
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                    marginBottom: '0.25rem'
+                  }}
+                >
+                  NOTES:
+                </div>
+                <div 
+                  style={{ 
+                    fontSize: '1rem', 
+                    color: '#212529',
+                    lineHeight: '1.5',
+                    fontWeight: '500'
+                  }}
+                >
+                  📝 {selectedPlot.notes || 'N/A'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        {selectedPlot.status?.toLowerCase() === 'available' && (
+          <div style={{ textAlign: 'center' }}>
+            <Button
+              size="lg"
+              onClick={() => {
+                setShowBookingModal(true);
+                setShowPlotDialog(false);
+              }}
+              style={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                borderRadius: '3.125rem',
+                padding: '1rem 3rem',
+                fontSize: '1.1rem',
+                fontWeight: '600',
+                boxShadow: '0 0.5rem 2rem rgba(102, 126, 234, 0.4)',
+                transition: 'all 0.3s ease',
+                minWidth: '200px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 0.75rem 2.5rem rgba(102, 126, 234, 0.5)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, #5a6fd8 0%, #6b5a8f 100%)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 0.5rem 2rem rgba(102, 126, 234, 0.4)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+              }}
+            >
+              🎯 Book This Plot
             </Button>
-          </Form>
-        </Modal.Body>
-      </Modal>
+          </div>
+        )}
+      </div>
+    )}
+  </Modal.Body>
+</Modal>
+      {/* Booking Modal */}
+    <Modal 
+  show={showBookingModal} 
+  onHide={() => setShowBookingModal(false)} 
+  centered
+  size="lg"
+  style={{ 
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  }}
+>
+  <Modal.Header 
+    closeButton 
+    style={{ 
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: 'white',
+      border: 'none',
+      borderRadius: '0.375rem 0.375rem 0 0',
+      padding: '1.5rem'
+    }}
+  >
+    <Modal.Title 
+      style={{ 
+        fontSize: '1.5rem', 
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem'
+      }}
+    >
+      🎯 Book Plot {selectedPlot?.plotNo}
+    </Modal.Title>
+  </Modal.Header>
+  
+  <Modal.Body 
+    style={{ 
+      background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+      padding: '0'
+    }}
+  >
+    <div style={{ padding: '2rem' }}>
+      
+      {/* Plot Summary Card */}
+      <div 
+        style={{ 
+          background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+          color: 'white',
+          borderRadius: '0.75rem',
+          padding: '1.5rem',
+          marginBottom: '2rem',
+          textAlign: 'center',
+          boxShadow: '0 0.5rem 1.5rem rgba(17, 153, 142, 0.3)'
+        }}
+      >
+        <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: '600' }}>
+          Plot {selectedPlot?.plotNo} - {selectedPlot?.area ? `${selectedPlot.area} sq.yd` : 'Premium Location'}
+        </h4>
+        <p style={{ margin: '0', opacity: '0.9', fontSize: '1.1rem' }}>
+          {selectedPlot?.price ? 
+            (selectedPlot.price >= 10000000 ? 
+              `₹${(selectedPlot.price / 10000000).toFixed(2)} Cr` : 
+              selectedPlot.price >= 100000 ? 
+              `₹${(selectedPlot.price / 100000).toFixed(2)} L` : 
+              `₹${selectedPlot.price.toLocaleString()}`
+            ) : 'Price on Request'
+          }
+        </p>
+      </div>
+
+      <Form onSubmit={handleBookingSubmit} >
+        
+        {/* Personal Information Section */}
+        <div 
+          style={{ 
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+            boxShadow: '0 0.25rem 1rem rgba(0,0,0,0.08)',
+            border: '1px solid #e9ecef'
+          }}
+        >
+          <h5 
+            style={{ 
+              color: '#495057',
+              marginBottom: '1.25rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            👤 Personal Information
+          </h5>
+          
+          <div className="row">
+            <div className="col-md-6">
+              <Form.Group className="mb-3">
+                <Form.Label 
+                  style={{ 
+                    fontWeight: '600',
+                    color: '#495057',
+                    marginBottom: '0.5rem'
+                  }}
+                >
+                  Full Name *
+                </Form.Label>
+                <Form.Control
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  placeholder="Enter your full name"
+                  style={{ 
+                    borderRadius: '0.5rem',
+                    border: '2px solid #e9ecef',
+                    padding: '0.75rem 1rem',
+                    fontSize: '1rem',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#667eea';
+                    e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e9ecef';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </Form.Group>
+            </div>
+            
+            <div className="col-md-6">
+              <Form.Group className="mb-3">
+                <Form.Label 
+                  style={{ 
+                    fontWeight: '600',
+                    color: '#495057',
+                    marginBottom: '0.5rem'
+                  }}
+                >
+                  Phone Number
+                </Form.Label>
+                <Form.Control
+                  type="text"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="Enter your phone number"
+                  style={{ 
+                    borderRadius: '0.5rem',
+                    border: '2px solid #e9ecef',
+                    padding: '0.75rem 1rem',
+                    fontSize: '1rem',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#667eea';
+                    e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e9ecef';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </Form.Group>
+            </div>
+          </div>
+          
+          <Form.Group className="mb-0">
+            <Form.Label 
+              style={{ 
+                fontWeight: '600',
+                color: '#495057',
+                marginBottom: '0.5rem'
+              }}
+            >
+              Email Address
+            </Form.Label>
+            <Form.Control
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="Enter your email address"
+              style={{ 
+                borderRadius: '0.5rem',
+                border: '2px solid #e9ecef',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#667eea';
+                e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#e9ecef';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+          </Form.Group>
+        </div>
+
+        {/* Message Section */}
+        <div 
+          style={{ 
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            padding: '1.5rem',
+            marginBottom: '2rem',
+            boxShadow: '0 0.25rem 1rem rgba(0,0,0,0.08)',
+            border: '1px solid #e9ecef'
+          }}
+        >
+          <h5 
+            style={{ 
+              color: '#495057',
+              marginBottom: '1.25rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            💬 Additional Message
+          </h5>
+          
+          <Form.Group className="mb-0">
+            <Form.Label 
+              style={{ 
+                fontWeight: '600',
+                color: '#495057',
+                marginBottom: '0.5rem'
+              }}
+            >
+              Your Message (Optional)
+            </Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={4}
+              value={formData.message}
+              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+              placeholder="Tell us about your requirements, preferred payment terms, or any questions you have..."
+              style={{ 
+                borderRadius: '0.5rem',
+                border: '2px solid #e9ecef',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                resize: 'vertical',
+                minHeight: '120px',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#667eea';
+                e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#e9ecef';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+          </Form.Group>
+        </div>
+
+        {/* Action Buttons */}
+        <div 
+          style={{ 
+            display: 'flex', 
+            gap: '1rem',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}
+        >
+          <Button 
+            variant="outline-secondary"
+            onClick={() => setShowBookingModal(false)}
+            size="lg"
+            style={{ 
+              borderRadius: '3.125rem',
+              padding: '0.75rem 2rem',
+              fontWeight: '600',
+              border: '2px solid #6c757d',
+              color: '#6c757d',
+              transition: 'all 0.2s ease',
+              minWidth: '120px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#6c757d';
+              e.currentTarget.style.color = 'white';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#6c757d';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            Cancel
+          </Button>
+          
+          <Button 
+            type="submit" 
+            size="lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: 'none',
+              borderRadius: '3.125rem',
+              padding: '0.75rem 2.5rem',
+              fontSize: '1.1rem',
+              fontWeight: '600',
+              boxShadow: '0 0.5rem 1.5rem rgba(102, 126, 234, 0.4)',
+              transition: 'all 0.3s ease',
+              minWidth: '180px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 0.75rem 2rem rgba(102, 126, 234, 0.5)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #5a6fd8 0%, #6b5a8f 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 0.5rem 1.5rem rgba(102, 126, 234, 0.4)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            }}
+          >
+            📧 Submit Enquiry
+          </Button>
+        </div>
+
+        {/* Privacy Notice */}
+        <div 
+          style={{ 
+            textAlign: 'center',
+            marginTop: '1.5rem',
+            padding: '1rem',
+            backgroundColor: 'rgba(102, 126, 234, 0.05)',
+            borderRadius: '0.5rem',
+            border: '1px solid rgba(102, 126, 234, 0.1)'
+          }}
+        >
+          <small 
+            style={{ 
+              color: '#6c757d',
+              fontSize: '0.875rem',
+              lineHeight: '1.4'
+            }}
+          >
+            🔒 Your information is secure and will only be used to contact you regarding this plot enquiry. 
+            We respect your privacy and won't share your details with third parties.
+          </small>
+        </div>
+        
+      </Form>
+    </div>
+  </Modal.Body>
+</Modal>
     </Container>
   );
 };

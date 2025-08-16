@@ -38,7 +38,7 @@ const PlotViewer = () => {
   const plotNumberDivsRef = useRef([]);
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
-  const zoomRef = useRef(1);
+  constmodal zoomRef = useRef(1);
   const minZoom = 0.4;
   const maxZoom = 2.5;
 

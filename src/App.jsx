@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Nav, Container, Navbar } from 'react-bootstrap';
 import Home from './pages/Home/Home';
 import About from './pages/About/About';
 import Login from './pages/Login/Login';
 import Admin from './pages/Admin/Admin';
-// import PlotViewer from './pages/PlotViewer/PlotViewer';
+import PlotViewer from './pages/PlotViewer/PlotViewer';
 // import PlotProvider from './pages/PlotViewer/PlotContext';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
@@ -14,20 +14,31 @@ import EnquiryManager from './pages/Enquiry/Enquiry';
 
 const App = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Get current route
 
   // Check for admin_token in localStorage on mount
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
-    if (!token && window.location.pathname !== '/login') {
+    if (!token && location.pathname !== '/login' && location.pathname !== '/plot') {
       navigate('/login');
     }
-  }, [navigate]);
+  }, [navigate, location.pathname]);
+
+  // Determine if sidebar should be displayed
+  const showSidebar = localStorage.getItem('admin_token') && location.pathname !== '/plot';
 
   return (
     // <PlotProvider>
-      <div className="app-container" style={{ display: 'flex', minHeight: '100vh', background: 'linear-gradient(135deg, #f5f7fa, #c3cfe2)' }}>
+      <div
+        className="app-container"
+        style={{
+          display: 'flex',
+          minHeight: '100vh',
+          background: location.pathname === '/plot' ? 'none' : 'linear-gradient(135deg, #f5f7fa, #c3cfe2)',
+        }}
+      >
         {/* Sidebar */}
-        {localStorage.getItem('admin_token') && (
+        {showSidebar && (
           <div
             style={{
               width: '20vw',
@@ -87,14 +98,14 @@ const App = () => {
               >
                 🛠️ Enquiry Manager
               </Nav.Link>
-              {/* <Nav.Link
+              <Nav.Link
                 as={Link}
                 to="/plot"
                 className="mb-2 p-3 rounded nav-link-custom"
                 style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
               >
                 📊 Plot
-              </Nav.Link> */}
+              </Nav.Link>
               <Nav.Link
                 onClick={() => {
                   localStorage.removeItem('admin_token');
@@ -113,19 +124,18 @@ const App = () => {
         <div
           style={{
             flex: 1,
-            marginLeft: localStorage.getItem('admin_token') ? '20vw' : '0',
-            padding: '20px',
+            marginLeft: showSidebar ? '20vw' : '0',
+            padding: location.pathname === '/plot' ? '0' : '20px',
             transition: 'margin-left 0.3s ease',
           }}
         >
-      
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/login" element={<Login />} />
             <Route path="/plot-management" element={<PlotManager />} />
             <Route path="/enquiry-management" element={<EnquiryManager />} />
-            {/* <Route path="/plot" element={<PlotViewer />} /> */}
+            <Route path="/plot" element={<PlotViewer />} />
           </Routes>
         </div>
       </div>

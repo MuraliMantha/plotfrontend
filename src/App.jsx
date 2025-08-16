@@ -11,6 +11,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import PlotManager from './pages/PlotManager/PlotManager';
 import EnquiryManager from './pages/Enquiry/Enquiry';
+import PlotDrawer from './pages/PlotDrawer/PlotDrawer';
 
 const App = () => {
   const navigate = useNavigate();
@@ -107,6 +108,14 @@ const App = () => {
                 📊 Plot
               </Nav.Link>
               <Nav.Link
+                as={Link}
+                to="/plot-drawer"
+                className="mb-2 p-3 rounded nav-link-custom"
+                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
+              >
+                📊 Plot Drawer
+              </Nav.Link>
+              <Nav.Link
                 onClick={() => {
                   localStorage.removeItem('admin_token');
                   navigate('/login');
@@ -136,6 +145,7 @@ const App = () => {
             <Route path="/plot-management" element={<PlotManager />} />
             <Route path="/enquiry-management" element={<EnquiryManager />} />
             <Route path="/plot" element={<PlotViewer />} />
+            <Route path="/plot-drawer" element={<PlotDrawer />} />
           </Routes>
         </div>
       </div>

@@ -352,6 +352,8 @@ camera.bottom += worldDY;
         if (idx === 0) shape.moveTo(x, yFlipped);
         else shape.lineTo(x, yFlipped);
       });
+
+      console.log("plotno:",feature.properties.plotNo, "coord:",coords)
       const geometry = new THREE.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: false });
       const material = new THREE.MeshBasicMaterial({
         color: getColorByStatus(feature.properties.status),
@@ -364,6 +366,8 @@ camera.bottom += worldDY;
 
       // Plot number label
       const centroid = polygonCentroid(coords);
+      console.log("plotno:",feature.properties.plotNo, "centroid:",centroid)
+
       const div = document.createElement('div');
       div.className = 'plot-number';
       div.innerText = feature.properties.plotNo;
@@ -388,34 +392,41 @@ camera.bottom += worldDY;
   }, [plots, imageWidth, imageHeight]);
 
   // 4. Update Plot Number Positions
-  const updatePlotNumbers = () => {
+ const updatePlotNumbers = () => {
   const camera = cameraRef.current;
   const canvas = canvasRef.current;
   const wrapper = canvasWrapperRef.current;
   if (!camera || !canvas || !wrapper) return;
 
   const rect = wrapper.getBoundingClientRect();
-  const w = rect.width;
-  const h = rect.height;
+  const pixelRatio = window.devicePixelRatio || 1; // Get browser zoom-adjusted pixel ratio
+  const w = rect.width * pixelRatio; // Scale to device pixels
+  const h = rect.height * pixelRatio; // Scale to device pixels
 
   plotNumberDivsRef.current.forEach(div => {
     const wx = parseFloat(div.dataset.worldX);
     const wy = parseFloat(div.dataset.worldY);
 
+    // Project world coordinates to normalized device coordinates (NDC)
     const vector = new THREE.Vector3(wx, wy, 0).project(camera);
-    const screenX = (vector.x * 0.5 + 0.5) * w;
-    const screenY = (1 - (vector.y * 0.5 + 0.5)) * h;
 
-    if (screenX < 0 || screenY < 0 || screenX > w || screenY > h) {
+    // Convert NDC to screen coordinates, accounting for pixel ratio
+    const screenX = (vector.x * 0.5 + 0.5) * rect.width; // Use CSS pixels for positioning
+    const screenY = (1 - (vector.y * 0.5 + 0.5)) * rect.height; // Use CSS pixels for positioning
+
+    // Check if the label is within the visible canvas area
+    if (screenX < 0 || screenY < 0 || screenX > rect.width || screenY > rect.height) {
       div.style.display = 'none';
     } else {
       div.style.display = 'block';
+      // Position the label in CSS pixels relative to the wrapper
       div.style.left = `${screenX}px`;
       div.style.top = `${screenY}px`;
       div.style.transform = 'translate(-50%, -50%)';
     }
   });
 };
+
 
 
 

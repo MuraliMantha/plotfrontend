@@ -6,16 +6,16 @@ import About from './pages/About/About';
 import Login from './pages/Login/Login';
 import Admin from './pages/Admin/Admin';
 import PlotViewer from './pages/PlotViewer/PlotViewer';
-// import PlotProvider from './pages/PlotViewer/PlotContext';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import PlotManager from './pages/PlotManager/PlotManager';
 import EnquiryManager from './pages/Enquiry/Enquiry';
 import PlotDrawer from './pages/PlotDrawer/PlotDrawer';
+import VentureManager from './pages/VentureManager/VentureManager';
 
 const App = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // Get current route
+  const location = useLocation();
 
   // Check for admin_token in localStorage on mount
   useEffect(() => {
@@ -28,128 +28,149 @@ const App = () => {
   // Determine if sidebar should be displayed
   const showSidebar = localStorage.getItem('admin_token') && location.pathname !== '/plot';
 
+  // Navigation items configuration
+  const navItems = [
+    { path: '/', icon: '🏠', label: 'Home' },
+    { path: '/about', icon: 'ℹ️', label: 'About' },
+    { path: '/venture-manager', icon: '🏘️', label: 'Venture Manager', isNew: true },
+    { path: '/plot-management', icon: '🛠️', label: 'Plot Manager' },
+    { path: '/enquiry-management', icon: '📋', label: 'Enquiry Manager' },
+    { path: '/plot', icon: '📊', label: 'Plot Viewer' },
+    { path: '/plot-drawer', icon: '✏️', label: 'Plot Drawer' },
+  ];
+
   return (
-    // <PlotProvider>
-      <div
-        className="app-container"
-        style={{
-          display: 'flex',
-          minHeight: '100vh',
-          background: location.pathname === '/plot' ? 'none' : 'linear-gradient(135deg, #f5f7fa, #c3cfe2)',
-        }}
-      >
-        {/* Sidebar */}
-        {showSidebar && (
-          <div
-            style={{
-              width: '20vw',
-              background: 'linear-gradient(180deg, #6b48ff 0%, #00ddeb 100%)',
-              color: '#fff',
-              fontFamily: "'Poppins', sans-serif",
-              boxShadow: '2px 0 10px rgba(0, 0, 0, 0.2)',
-              position: 'fixed',
-              height: '100vh',
-              padding: '20px',
-              zIndex: 1000,
-            }}
-          >
+    <div
+      className="app-container"
+      style={{
+        display: 'flex',
+        minHeight: '100vh',
+        background: location.pathname === '/plot' ? 'none' : 'linear-gradient(135deg, #f5f7fa, #c3cfe2)',
+      }}
+    >
+      {/* Sidebar */}
+      {showSidebar && (
+        <div
+          style={{
+            width: '260px',
+            background: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+            color: '#fff',
+            fontFamily: "'Inter', 'Poppins', sans-serif",
+            boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)',
+            position: 'fixed',
+            height: '100vh',
+            padding: '1.5rem',
+            zIndex: 1000,
+            overflowY: 'auto'
+          }}
+        >
+          {/* Logo */}
+          <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             <h3
               style={{
                 fontSize: '1.5rem',
                 fontWeight: 'bold',
-                textTransform: 'uppercase',
-                background: 'linear-gradient(45deg, #ff6b6b, #ffe66d)',
+                background: 'linear-gradient(45deg, #fbbf24, #f472b6, #a78bfa)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                marginBottom: '20px',
+                marginBottom: '0.25rem',
               }}
             >
-              ✨ Plot 3D
+              ✨ Plot3D
             </h3>
-            <Nav className="flex-column">
-              <Nav.Link
-                as={Link}
-                to="/"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                🏠 Home
-              </Nav.Link>
-              <Nav.Link
-                as={Link}
-                to="/about"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                ℹ️ About
-              </Nav.Link>
-              <Nav.Link
-                as={Link}
-                to="/plot-management"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                🛠️ Plot Manager
-              </Nav.Link>
-              <Nav.Link
-                as={Link}
-                to="/enquiry-management"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                🛠️ Enquiry Manager
-              </Nav.Link>
-              <Nav.Link
-                as={Link}
-                to="/plot"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                📊 Plot
-              </Nav.Link>
-              <Nav.Link
-                as={Link}
-                to="/plot-drawer"
-                className="mb-2 p-3 rounded nav-link-custom"
-                style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.1)' }}
-              >
-                📊 Plot Drawer
-              </Nav.Link>
-              <Nav.Link
-                onClick={() => {
-                  localStorage.removeItem('admin_token');
-                  navigate('/login');
-                }}
-                className="mt-4 p-3 rounded nav-link-custom"
-                style={{ color: '#ff6b6b', background: 'rgba(255, 255, 255, 0.2)' }}
-              >
-                🚪 Logout
-              </Nav.Link>
-            </Nav>
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', fontWeight: '500' }}>
+              Version 2.0
+            </span>
           </div>
-        )}
 
-        {/* Main Content */}
-        <div
-          style={{
-            flex: 1,
-            marginLeft: showSidebar ? '20vw' : '0',
-            padding: location.pathname === '/plot' ? '0' : '20px',
-            transition: 'margin-left 0.3s ease',
-          }}
-        >
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/plot-management" element={<PlotManager />} />
-            <Route path="/enquiry-management" element={<EnquiryManager />} />
-            <Route path="/plot" element={<PlotViewer />} />
-            <Route path="/plot-drawer" element={<PlotDrawer />} />
-          </Routes>
+          {/* Navigation */}
+          <Nav className="flex-column">
+            {navItems.map((item) => (
+              <Nav.Link
+                key={item.path}
+                as={Link}
+                to={item.path}
+                className="mb-2 p-3 rounded nav-link-custom"
+                style={{
+                  color: location.pathname === item.path ? '#fff' : 'rgba(255,255,255,0.7)',
+                  background: location.pathname === item.path
+                    ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(99,102,241,0.3) 100%)'
+                    : 'rgba(255, 255, 255, 0.05)',
+                  border: location.pathname === item.path ? '1px solid rgba(139,92,246,0.5)' : '1px solid transparent',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  borderRadius: '10px'
+                }}
+              >
+                <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
+                {item.label}
+                {item.isNew && (
+                  <span style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
+                    fontSize: '0.6rem',
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    fontWeight: '600',
+                    marginLeft: 'auto'
+                  }}>
+                    NEW
+                  </span>
+                )}
+              </Nav.Link>
+            ))}
+
+            {/* Logout Button */}
+            <Nav.Link
+              onClick={() => {
+                localStorage.removeItem('admin_token');
+                navigate('/login');
+              }}
+              className="mt-4 p-3 rounded nav-link-custom"
+              style={{
+                color: '#fca5a5',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                fontSize: '0.9rem',
+                fontWeight: '500',
+                borderRadius: '10px'
+              }}
+            >
+              <span style={{ fontSize: '1.1rem' }}>🚪</span>
+              Logout
+            </Nav.Link>
+          </Nav>
         </div>
+      )}
+
+      {/* Main Content */}
+      <div
+        style={{
+          flex: 1,
+          marginLeft: showSidebar ? '260px' : '0',
+          padding: location.pathname === '/plot' ? '0' : '20px',
+          transition: 'margin-left 0.3s ease',
+        }}
+      >
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/venture-manager" element={<VentureManager />} />
+          <Route path="/plot-management" element={<PlotManager />} />
+          <Route path="/enquiry-management" element={<EnquiryManager />} />
+          <Route path="/plot" element={<PlotViewer />} />
+          <Route path="/plot-drawer" element={<PlotDrawer />} />
+        </Routes>
       </div>
-    // </PlotProvider>
+    </div>
   );
 };
 

@@ -720,17 +720,27 @@ const PlotViewer = () => {
               left: hoverPos.x + 16,
               top: hoverPos.y + 16,
               background: '#fff',
-              padding: '10px',
-              borderRadius: '6px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+              color: '#000',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
               zIndex: 1001,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              fontSize: '14px',
+              lineHeight: '1.6'
             }}
           >
-            <b>Plot No:</b> {hoverData.plotNo || 'N/A'}<br />
-            <b>Area:</b> {hoverData.area ? hoverData.area + ' sq.yd' : 'N/A'}<br />
-            <b>Status:</b> {hoverData.status || 'N/A'}<br />
-            <b>Price:</b> {hoverData.price ? '₹' + hoverData.price.toLocaleString() : 'N/A'}
+            <div style={{ color: '#000', fontWeight: '700', marginBottom: '4px', fontSize: '15px' }}>
+              Plot #{hoverData.plotNo || 'N/A'}
+            </div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Area:</b> {hoverData.area ? hoverData.area + ' sq.yd' : 'N/A'}</div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Status:</b> <span style={{
+              color: hoverData.status?.toLowerCase() === 'available' ? '#16a34a' :
+                hoverData.status?.toLowerCase() === 'sold' ? '#dc2626' :
+                  hoverData.status?.toLowerCase() === 'reserved' ? '#d97706' : '#333',
+              fontWeight: '600'
+            }}>{hoverData.status || 'N/A'}</span></div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Price:</b> {hoverData.price ? '₹' + hoverData.price.toLocaleString() : 'N/A'}</div>
           </div>
         )}
       </div>

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 
 const API_BASE = 'http://localhost:5000/api';
 
-// V2 Theme Colors
+// V3 Theme Colors
 const colors = {
   primary: '#6366f1',
   secondary: '#22d3ee',
@@ -101,12 +101,12 @@ const Home = () => {
   };
 
   const quickActions = [
-    { path: '/venture-manager', icon: '🏘️', label: 'Manage Ventures', color: '#8b5cf6' },
-    { path: '/plot-drawer', icon: '✏️', label: 'Draw Plots', color: '#6366f1' },
-    { path: '/plot', icon: '🗺️', label: 'View Plots', color: '#22c55e' },
-    { path: '/plot-manager', icon: '📋', label: 'Plot Manager', color: '#22d3ee' },
-    { path: '/enquiry-management', icon: '📧', label: 'Enquiries', color: '#f59e0b' },
-    { path: '/analytics', icon: '📊', label: 'Analytics', color: '#ec4899' },
+    { path: '/customers', icon: '👥', label: 'Customers', color: '#8b5cf6', isNew: true },
+    { path: '/pipeline', icon: '📊', label: 'Sales Pipeline', color: '#ec4899', isNew: true },
+    { path: '/bookings', icon: '📋', label: 'Bookings', color: '#22c55e', isNew: true },
+    { path: '/venture-manager', icon: '🏠️', label: 'Ventures', color: '#6366f1' },
+    { path: '/plot-management', icon: '📈', label: 'Plot Manager', color: '#22d3ee' },
+    { path: '/enquiry-management', icon: '💬', label: 'Enquiries', color: '#f59e0b' },
   ];
 
   const statsCards = [
@@ -206,7 +206,7 @@ const Home = () => {
                     fontSize: '0.8rem',
                     fontWeight: '600'
                   }}>
-                    ✨ Plot3D V2.0 Dashboard
+                    ✨ Plot3D V3.0 Dashboard
                   </Badge>
                   <h1 style={{
                     fontSize: '2.75rem',
@@ -224,8 +224,8 @@ const Home = () => {
                     maxWidth: '550px',
                     lineHeight: '1.6'
                   }}>
-                    Multi-venture real estate management platform with advanced plot drawing,
-                    analytics, and export capabilities.
+                    Complete real estate CRM with customer management, sales pipeline,
+                    booking system, and advanced analytics.
                   </p>
                   <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <Button
@@ -483,7 +483,8 @@ const Home = () => {
                   fontSize: '0.95rem',
                   fontWeight: '600',
                   boxShadow: `0 8px 25px ${action.color}40`,
-                  transition: 'all 0.3s ease'
+                  transition: 'all 0.3s ease',
+                  position: 'relative'
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
@@ -496,6 +497,15 @@ const Home = () => {
               >
                 <span style={{ fontSize: '1.25rem' }}>{action.icon}</span>
                 {action.label}
+                {action.isNew && (
+                  <span style={{
+                    background: 'rgba(255,255,255,0.3)',
+                    fontSize: '0.6rem',
+                    padding: '2px 6px',
+                    borderRadius: '8px',
+                    fontWeight: '700'
+                  }}>NEW</span>
+                )}
               </Button>
             ))}
           </div>

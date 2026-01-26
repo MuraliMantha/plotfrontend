@@ -12,6 +12,12 @@ import PlotManager from './pages/PlotManager/PlotManager';
 import EnquiryManager from './pages/Enquiry/Enquiry';
 import PlotDrawer from './pages/PlotDrawer/PlotDrawer';
 import VentureManager from './pages/VentureManager/VentureManager';
+import CustomerManager from './pages/Customers/CustomerManager';
+import CustomerDetail from './pages/Customers/CustomerDetail';
+import SalesPipeline from './pages/Pipeline/SalesPipeline';
+import BookingManager from './pages/Bookings/BookingManager';
+import BookingDetail from './pages/Bookings/BookingDetail';
+import Reports from './pages/Reports/Reports';
 
 const App = () => {
   const navigate = useNavigate();
@@ -32,10 +38,14 @@ const App = () => {
   const navItems = [
     { path: '/', icon: '🏠', label: 'Home' },
     { path: '/about', icon: 'ℹ️', label: 'About' },
-    { path: '/venture-manager', icon: '🏘️', label: 'Venture Manager', isNew: true },
+    { path: '/venture-manager', icon: '🏘️', label: 'Venture Manager' },
     { path: '/plot-management', icon: '🛠️', label: 'Plot Manager' },
-    { path: '/enquiry-management', icon: '📋', label: 'Enquiry Manager' },
-    { path: '/plot', icon: '📊', label: 'Plot Viewer' },
+    { path: '/customers', icon: '👥', label: 'Customers', isNew: true },
+    { path: '/pipeline', icon: '📊', label: 'Sales Pipeline', isNew: true },
+    { path: '/bookings', icon: '📋', label: 'Bookings', isNew: true },
+    { path: '/reports', icon: '📈', label: 'Reports', isNew: true },
+    { path: '/enquiry-management', icon: '💬', label: 'Enquiries' },
+    { path: '/plot', icon: '🗺️', label: 'Plot Viewer' },
     { path: '/plot-drawer', icon: '✏️', label: 'Plot Drawer' },
   ];
 
@@ -79,7 +89,7 @@ const App = () => {
               ✨ Plot3D
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', fontWeight: '500' }}>
-              Version 2.0
+              Version 3.0
             </span>
           </div>
 
@@ -92,11 +102,11 @@ const App = () => {
                 to={item.path}
                 className="mb-2 p-3 rounded nav-link-custom"
                 style={{
-                  color: location.pathname === item.path ? '#fff' : 'rgba(255,255,255,0.7)',
-                  background: location.pathname === item.path
+                  color: location.pathname === item.path || location.pathname.startsWith(item.path + '/') ? '#fff' : 'rgba(255,255,255,0.7)',
+                  background: location.pathname === item.path || location.pathname.startsWith(item.path + '/')
                     ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(99,102,241,0.3) 100%)'
                     : 'rgba(255, 255, 255, 0.05)',
-                  border: location.pathname === item.path ? '1px solid rgba(139,92,246,0.5)' : '1px solid transparent',
+                  border: location.pathname === item.path || location.pathname.startsWith(item.path + '/') ? '1px solid rgba(139,92,246,0.5)' : '1px solid transparent',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   alignItems: 'center',
@@ -166,6 +176,12 @@ const App = () => {
           <Route path="/venture-manager" element={<VentureManager />} />
           <Route path="/plot-management" element={<PlotManager />} />
           <Route path="/enquiry-management" element={<EnquiryManager />} />
+          <Route path="/customers" element={<CustomerManager />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/pipeline" element={<SalesPipeline />} />
+          <Route path="/bookings" element={<BookingManager />} />
+          <Route path="/bookings/:id" element={<BookingDetail />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/plot" element={<PlotViewer />} />
           <Route path="/plot-drawer" element={<PlotDrawer />} />
         </Routes>

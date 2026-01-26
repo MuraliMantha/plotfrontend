@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 
 const API_BASE = 'http://localhost:5000/api';
 
-// V2 Theme Colors
+// V3 Theme Colors
 const colors = {
   primary: '#6366f1',
   primaryHover: '#4f46e5',
@@ -15,6 +15,7 @@ const colors = {
   success: '#22c55e',
   warning: '#f59e0b',
   danger: '#ef4444',
+  purple: '#8b5cf6',
   dark: '#0f172a',
   darker: '#020617',
   cardBg: 'rgba(30, 41, 59, 0.8)',
@@ -188,6 +189,7 @@ const styles = {
 const EnquiryManager = () => {
   const navigate = useNavigate();
   const [enquiries, setEnquiries] = useState([]);
+  const [stats, setStats] = useState({ total: 0, newLeadsCreated: 0, linkedToExisting: 0 });
   const [ventures, setVentures] = useState([]);
   const [selectedVenture, setSelectedVenture] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -209,19 +211,28 @@ const EnquiryManager = () => {
       try {
         setLoading(true);
 
-        // Fetch enquiries
+        // Fetch enquiries (new API returns { success, data })
         const enquiriesRes = await fetch(`${API_BASE}/enquiries`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const enquiriesData = await enquiriesRes.json();
-        setEnquiries(Array.isArray(enquiriesData) ? enquiriesData : []);
+        setEnquiries(enquiriesData.data || enquiriesData || []);
+
+        // Fetch stats
+        const statsRes = await fetch(`${API_BASE}/enquiries/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const statsData = await statsRes.json();
+        if (statsData.success) {
+          setStats(statsData.data);
+        }
 
         // Fetch ventures
         const venturesRes = await fetch(`${API_BASE}/ventures`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const venturesData = await venturesRes.json();
-        setVentures(Array.isArray(venturesData) ? venturesData : []);
+        setVentures(Array.isArray(venturesData) ? venturesData : (venturesData.data || []));
 
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -573,10 +584,10 @@ const EnquiryManager = () => {
                 fontSize: '1.5rem',
                 marginBottom: '1rem'
               }}>
-                🗓️
+                ✨
               </div>
-              <h3 style={styles.statValue}>{recentEnquiriesCount}</h3>
-              <p style={styles.statLabel}>This Week</p>
+              <h3 style={styles.statValue}>{stats.newLeadsCreated}</h3>
+              <p style={styles.statLabel}>New Leads Created</p>
             </Card.Body>
           </Card>
         </Col>
@@ -586,7 +597,7 @@ const EnquiryManager = () => {
             style={styles.card}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = '0 20px 40px rgba(245, 158, 11, 0.2)';
+              e.currentTarget.style.boxShadow = '0 20px 40px rgba(139, 92, 246, 0.2)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'translateY(0)';
@@ -598,17 +609,17 @@ const EnquiryManager = () => {
                 width: '56px',
                 height: '56px',
                 borderRadius: '16px',
-                background: 'rgba(245, 158, 11, 0.2)',
+                background: 'rgba(139, 92, 246, 0.2)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '1.5rem',
                 marginBottom: '1rem'
               }}>
-                🏠
+                🔗
               </div>
-              <h3 style={styles.statValue}>{uniquePlotsCount}</h3>
-              <p style={styles.statLabel}>Unique Plots</p>
+              <h3 style={styles.statValue}>{stats.linkedToExisting}</h3>
+              <p style={styles.statLabel}>Linked to Existing</p>
             </Card.Body>
           </Card>
         </Col>
@@ -660,7 +671,7 @@ const EnquiryManager = () => {
                   <tr>
                     <th style={styles.tableHeader}>Customer</th>
                     <th style={styles.tableHeader}>Contact</th>
-                    <th style={styles.tableHeader}>Message</th>
+                    <th style={styles.tableHeader}>Lead Status</th>
                     <th style={styles.tableHeader}>Plot</th>
                     <th style={styles.tableHeader}>Date</th>
                     <th style={styles.tableHeader}>Actions</th>
@@ -725,22 +736,45 @@ const EnquiryManager = () => {
 
                       <td style={{
                         ...styles.tableCell,
-                        maxWidth: '280px',
                         borderBottom: index === filteredEnquiries.length - 1 ? 'none' : styles.tableCell.borderBottom,
                         background: 'transparent'
                       }}>
-                        <div style={{
-                          color: '#94a3b8',
-                          fontSize: '0.875rem',
-                          lineHeight: '1.4',
-                          overflow: 'hidden',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          {enq.message}
-                        </div>
+                        {enq.customerId ? (
+                          <div>
+                            <Badge style={{
+                              ...styles.badge,
+                              background: enq.isNewCustomer ? 'rgba(34, 197, 94, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                              color: enq.isNewCustomer ? colors.success : colors.purple,
+                              marginBottom: '4px'
+                            }}>
+                              {enq.isNewCustomer ? '✨ New Lead' : '🔗 Existing'}
+                            </Badge>
+                            <div style={{ marginTop: '4px' }}>
+                              <button
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: colors.primary,
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  textDecoration: 'underline'
+                                }}
+                                onClick={() => navigate(`/customers/${enq.customerId._id || enq.customerId}`)}
+                              >
+                                View in CRM →
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Badge style={{
+                            ...styles.badge,
+                            background: 'rgba(148, 163, 184, 0.2)',
+                            color: colors.textMuted
+                          }}>
+                            ○ Not Linked
+                          </Badge>
+                        )}
                       </td>
 
                       <td style={{

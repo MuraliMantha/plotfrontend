@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Modal, Badge, Spinner, Table } from 'react-bootstrap';
 import jsPDF from 'jspdf';
 
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 // V3 Theme Colors
 const colors = {

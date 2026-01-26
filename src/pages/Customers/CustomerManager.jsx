@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Modal, Badge, Spinner } from 'react-bootstrap';
 
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 // V3 Theme Colors
 const colors = {

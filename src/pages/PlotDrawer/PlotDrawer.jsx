@@ -3,7 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Line, Text, Circle, Group } from "re
 import { Container, Row, Col, Card, Button, Form, Badge, Spinner, Alert } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 // Custom hook for dynamic image loading - returns image, loading state, and original dimensions
 const useDynamicImage = (url) => {
@@ -42,7 +42,9 @@ const PlotDrawer = () => {
   const [venturesLoading, setVenturesLoading] = useState(true);
 
   // Image - get original dimensions for coordinate scaling
-  const imageUrl = selectedVenture ? `http://localhost:5000${selectedVenture.imageUrl}` : null;
+  const imageUrl = selectedVenture
+    ? (selectedVenture.imageUrl.startsWith('http') ? selectedVenture.imageUrl : `${API_BASE.replace('/api', '')}${selectedVenture.imageUrl}`)
+    : null;
   const [image, imageLoading, originalDimensions] = useDynamicImage(imageUrl);
 
   // Drawing state

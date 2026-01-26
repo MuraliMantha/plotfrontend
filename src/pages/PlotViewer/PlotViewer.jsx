@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Modal, Button, Form, Container, Badge, Spinner } from 'react-bootstrap';
 
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 const PlotViewer = () => {
   // REFS
@@ -76,10 +76,10 @@ const PlotViewer = () => {
         // Set default or first venture
         if (defaultData.success && defaultData.data) {
           setSelectedVenture(defaultData.data);
-          setCurrentImageUrl(`http://localhost:5000${defaultData.data.imageUrl}`);
+          setCurrentImageUrl(defaultData.data.imageUrl.startsWith('http') ? defaultData.data.imageUrl : `${API_BASE.replace('/api', '')}${defaultData.data.imageUrl}`);
         } else if (allData.data.length > 0) {
           setSelectedVenture(allData.data[0]);
-          setCurrentImageUrl(`http://localhost:5000${allData.data[0].imageUrl}`);
+          setCurrentImageUrl(allData.data[0].imageUrl.startsWith('http') ? allData.data[0].imageUrl : `${API_BASE.replace('/api', '')}${allData.data[0].imageUrl}`);
         }
       }
     } catch (err) {
@@ -94,7 +94,7 @@ const PlotViewer = () => {
     const venture = ventures.find(v => v._id === ventureId);
     if (venture) {
       setSelectedVenture(venture);
-      setCurrentImageUrl(`http://localhost:5000${venture.imageUrl}`);
+      setCurrentImageUrl(venture.imageUrl.startsWith('http') ? venture.imageUrl : `${API_BASE.replace('/api', '')}${venture.imageUrl}`);
       setPlots([]);
     }
   };

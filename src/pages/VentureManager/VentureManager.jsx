@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Button, Form, Modal, Badge, Spinner, Alert } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Text, Group } from 'react-konva';
-
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 // Custom hook for dynamic image loading for Konva
 const useKonvaImage = (url) => {
@@ -39,7 +38,7 @@ const VentureManager = () => {
     const [createForm, setCreateForm] = useState({
         name: '',
         description: '',
-        imageData: null,
+        imageFile: null,
         imageName: '',
         bounds: { width: 0, height: 0 },
         location: {
@@ -63,7 +62,9 @@ const VentureManager = () => {
     const [submitting, setSubmitting] = useState(false);
 
     // Konva image for calibration
-    const calibrationImageUrl = selectedVenture ? `http://localhost:5000${selectedVenture.imageUrl}` : null;
+    const calibrationImageUrl = selectedVenture
+        ? (selectedVenture.imageUrl.startsWith('http') ? selectedVenture.imageUrl : `http://localhost:5000${selectedVenture.imageUrl}`)
+        : null;
     const calibrationImage = useKonvaImage(calibrationImageUrl);
 
     // Calculate canvas size for calibration
@@ -119,7 +120,7 @@ const VentureManager = () => {
             img.onload = () => {
                 setCreateForm(prev => ({
                     ...prev,
-                    imageData: event.target.result,
+                    imageFile: file,
                     imageName: file.name,
                     bounds: { width: img.width, height: img.height }
                 }));
@@ -132,7 +133,7 @@ const VentureManager = () => {
 
     // Create venture
     const handleCreateVenture = async () => {
-        if (!createForm.name || !createForm.imageData) {
+        if (!createForm.name || !createForm.imageFile) {
             setError('Name and image are required');
             return;
         }
@@ -140,13 +141,21 @@ const VentureManager = () => {
         setSubmitting(true);
         try {
             const token = localStorage.getItem('admin_token');
+            const formData = new FormData();
+
+            formData.append('name', createForm.name);
+            formData.append('description', createForm.description);
+            formData.append('image', createForm.imageFile);
+            formData.append('bounds', JSON.stringify(createForm.bounds));
+            formData.append('location', JSON.stringify(createForm.location));
+
             const res = await fetch(`${API_BASE}/ventures`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
+                    // Note: Fetch sets boundary automatically for FormData, don't set Content-Type manually
                 },
-                body: JSON.stringify(createForm)
+                body: formData
             });
 
             const data = await res.json();
@@ -171,7 +180,7 @@ const VentureManager = () => {
         setCreateForm({
             name: '',
             description: '',
-            imageData: null,
+            imageFile: null,
             imageName: '',
             bounds: { width: 0, height: 0 },
             location: { address: '', city: '', state: '', pincode: '' }
@@ -470,7 +479,7 @@ const VentureManager = () => {
                                 {/* Image Preview */}
                                 <div style={{
                                     height: '160px',
-                                    background: `url(http://localhost:5000${venture.imageUrl}) center/cover`,
+                                    background: `url(${venture.imageUrl.startsWith('http') ? venture.imageUrl : `http://localhost:5000${venture.imageUrl}`}) center/cover`,
                                     position: 'relative'
                                 }}>
                                     {venture.isDefault && (
@@ -665,7 +674,7 @@ const VentureManager = () => {
                     <Button
                         variant="primary"
                         onClick={handleCreateVenture}
-                        disabled={submitting || !createForm.name || !createForm.imageData}
+                        disabled={submitting || !createForm.name || !createForm.imageFile}
                         style={{
                             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                             border: 'none'

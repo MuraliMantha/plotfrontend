@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, Button, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:5000/api';
+import API_BASE from '../../config';
 
 // V3 Theme Colors
 const colors = {
@@ -615,7 +615,7 @@ const Home = () => {
                     <div style={{
                       height: '140px',
                       background: venture.imageUrl
-                        ? `url(http://localhost:5000${venture.imageUrl}) center/cover`
+                        ? `url(${venture.imageUrl.startsWith('http') ? venture.imageUrl : API_BASE.replace('/api', '') + venture.imageUrl}) center/cover`
                         : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                       position: 'relative'
                     }}>

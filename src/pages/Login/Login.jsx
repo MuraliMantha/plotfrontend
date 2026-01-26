@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Form, Button, Alert } from 'react-bootstrap';
+import API_BASE from '../../config';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -13,9 +14,9 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-    
+
     try {
-      const res = await fetch('http://localhost:5000/api/login', {
+      const res = await fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -71,7 +72,7 @@ const Login = () => {
         borderRadius: '50%',
         filter: 'blur(60px)'
       }} />
-      
+
       <div style={{
         position: 'absolute',
         bottom: '10%',
@@ -117,7 +118,7 @@ const Login = () => {
           }}>
             🏢
           </div>
-          
+
           <h1 style={{
             fontSize: '2rem',
             fontWeight: '700',
@@ -129,7 +130,7 @@ const Login = () => {
           }}>
             Admin Portal
           </h1>
-          
+
           <p style={{
             color: '#64748b',
             fontSize: '0.875rem',
@@ -207,9 +208,9 @@ const Login = () => {
 
           {/* Error Alert */}
           {error && (
-            <Alert 
-              variant="danger" 
-              style={{ 
+            <Alert
+              variant="danger"
+              style={{
                 marginBottom: '1.5rem',
                 borderRadius: '10px',
                 border: 'none',
@@ -237,7 +238,7 @@ const Login = () => {
             disabled={isLoading}
             style={{
               width: '100%',
-              background: isLoading 
+              background: isLoading
                 ? 'linear-gradient(135deg, #9ca3af, #6b7280)'
                 : 'linear-gradient(135deg, #4f46e5, #3b82f6)',
               border: 'none',
@@ -245,7 +246,7 @@ const Login = () => {
               borderRadius: '12px',
               fontWeight: '600',
               fontSize: '1rem',
-              boxShadow: isLoading 
+              boxShadow: isLoading
                 ? 'none'
                 : '0 4px 15px rgba(79, 70, 229, 0.4)',
               transition: 'all 0.2s ease',

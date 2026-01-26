@@ -1,11 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { Modal, Button, Form, Container } from 'react-bootstrap';
-import siteplan from '../../assets/siteplan.png';
+import { Modal, Button, Form, Container, Badge, Spinner } from 'react-bootstrap';
+
+import API_BASE from '../../config';
 
 const PlotViewer = () => {
+  // REFS
   const canvasRef = useRef(null);
+  const canvasWrapperRef = useRef(null);
+  const plotLabelContainerRef = useRef(null);
+
+  // V2: VENTURE STATE
+  const [ventures, setVentures] = useState([]);
+  const [selectedVenture, setSelectedVenture] = useState(null);
+  const [venturesLoading, setVenturesLoading] = useState(true);
+  const [currentImageUrl, setCurrentImageUrl] = useState(null);
+
+  // STATE
   const [plots, setPlots] = useState([]);
+
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPlotDialog, setShowPlotDialog] = useState(false);
@@ -22,10 +35,12 @@ const PlotViewer = () => {
   });
   const [lastLoadedGeoJSON, setLastLoadedGeoJSON] = useState(null);
 
+  // Internals
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
   const imageRef = useRef(null);
+  const imagePlaneRef = useRef(null);
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const plotNumberDivsRef = useRef([]);
@@ -34,6 +49,55 @@ const PlotViewer = () => {
   const zoomRef = useRef(1);
   const minZoom = 0.4;
   const maxZoom = 2.5;
+
+  // For overlay
+  const [hoverData, setHoverData] = useState(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+
+  const [imageWidth, setImageWidth] = useState(null);
+  const [imageHeight, setImageHeight] = useState(null);
+
+  // V2: Fetch ventures on mount
+  useEffect(() => {
+    fetchVentures();
+  }, []);
+
+  const fetchVentures = async () => {
+    try {
+      setVenturesLoading(true);
+      const res = await fetch(`${API_BASE}/ventures/default`);
+      const defaultData = await res.json();
+
+      const allRes = await fetch(`${API_BASE}/ventures`);
+      const allData = await allRes.json();
+
+      if (allData.success) {
+        setVentures(allData.data);
+        // Set default or first venture
+        if (defaultData.success && defaultData.data) {
+          setSelectedVenture(defaultData.data);
+          setCurrentImageUrl(defaultData.data.imageUrl.startsWith('http') ? defaultData.data.imageUrl : `${API_BASE.replace('/api', '')}${defaultData.data.imageUrl}`);
+        } else if (allData.data.length > 0) {
+          setSelectedVenture(allData.data[0]);
+          setCurrentImageUrl(allData.data[0].imageUrl.startsWith('http') ? allData.data[0].imageUrl : `${API_BASE.replace('/api', '')}${allData.data[0].imageUrl}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching ventures:', err);
+      setStatusMsg('Failed to load ventures');
+    } finally {
+      setVenturesLoading(false);
+    }
+  };
+
+  const handleVentureChange = (ventureId) => {
+    const venture = ventures.find(v => v._id === ventureId);
+    if (venture) {
+      setSelectedVenture(venture);
+      setCurrentImageUrl(venture.imageUrl.startsWith('http') ? venture.imageUrl : `${API_BASE.replace('/api', '')}${venture.imageUrl}`);
+      setPlots([]);
+    }
+  };
 
   // Helper: Clamp value
   const clamp = (val, min, max) => Math.max(min, Math.min(val, max));
@@ -62,51 +126,67 @@ const PlotViewer = () => {
       y += (coords[i][1] + coords[j][1]) * f;
     }
     area *= 3;
-    return area === 0 ? [0, 0] : [x / area, y / area]; // Prevent division by zero
+    return area === 0 ? [0, 0] : [x / area, y / area];
   };
 
   // 1. Setup Scene, Camera, Renderer, and Background
   useEffect(() => {
+    if (!currentImageUrl || !selectedVenture) return;
+
     const img = new window.Image();
-    img.src = siteplan;
+    img.crossOrigin = 'anonymous';
+    img.src = currentImageUrl;
     imageRef.current = img;
 
     img.onload = () => {
       const width = img.width;
       const height = img.height;
+      setImageWidth(width);
+      setImageHeight(height);
 
-      // Scene
-      const scene = new THREE.Scene();
-      sceneRef.current = scene;
+      // Scene - create new or reuse
+      let scene = sceneRef.current;
+      if (!scene) {
+        scene = new THREE.Scene();
+        sceneRef.current = scene;
+      } else {
+        // Clear existing objects
+        while (scene.children.length > 0) {
+          scene.remove(scene.children[0]);
+        }
+      }
 
-      // Camera
-      const camera = new THREE.OrthographicCamera(0, width, height, 0, -100, 100);
-      camera.position.z = 10;
+      // Camera: Centered on image
+      const camera = new THREE.OrthographicCamera(
+        0, width, height, 0, -100, 100
+      );
+      camera.position.set(0, 0, 10);
       cameraRef.current = camera;
+      zoomRef.current = 1;
 
       // Renderer
-      const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true, antialias: true });
-      renderer.setSize(width, height);
-      rendererRef.current = renderer;
+      if (!rendererRef.current) {
+        const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true, antialias: true });
+        rendererRef.current = renderer;
+      }
+      rendererRef.current.setSize(width, height);
 
-      // Siteplan texture
-      const texture = new THREE.TextureLoader().load(siteplan);
+      // Image plane
+      const texture = new THREE.TextureLoader().load(currentImageUrl);
       const material = new THREE.MeshBasicMaterial({ map: texture });
       const geometry = new THREE.PlaneGeometry(width, height);
       const plane = new THREE.Mesh(geometry, material);
       plane.position.set(width / 2, height / 2, -1);
       scene.add(plane);
+      imagePlaneRef.current = plane;
 
-      // Initial render
-      renderer.render(scene, camera);
-
-      // Fetch plots
       fetchPlots();
 
-      // Animation loop
       const animate = () => {
-        renderer.render(scene, camera);
-        updatePlotNumbers();
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+          updatePlotNumbers();
+        }
         requestAnimationFrame(animate);
       };
       animate();
@@ -128,7 +208,7 @@ const PlotViewer = () => {
     const handleMouseMove = (e) => {
       const img = imageRef.current;
       const camera = cameraRef.current;
-      const scene = sceneRef.current; // Fix: Use sceneRef.current
+      const scene = sceneRef.current;
       if (!img || !camera || !scene) return;
 
       // Panning
@@ -136,36 +216,48 @@ const PlotViewer = () => {
         const dx = e.clientX - lastMouseRef.current.x;
         const dy = e.clientY - lastMouseRef.current.y;
         lastMouseRef.current = { x: e.clientX, y: e.clientY };
-        camera.position.x -= dx;
-        camera.position.y += dy;
+
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const zoom = zoomRef.current;
+        const img = imageRef.current;
+
+        // Convert dx/dy in pixels to world units
+        const worldDX = (dx / rect.width) * (camera.right - camera.left);
+        const worldDY = (dy / rect.height) * (camera.top - camera.bottom);
+
+        camera.left -= worldDX;
+        camera.right -= worldDX;
+        camera.top += worldDY;
+        camera.bottom += worldDY;
+
+        camera.updateProjectionMatrix();
         updatePlotNumbers();
+        return;
       }
+
 
       // Hover overlay
       const rect = canvasRef.current.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) + camera.position.x;
-      const my = (e.clientY - rect.top) - camera.position.y;
-      mouseRef.current.x = (mx / img.width) * 2 - 1;
-      mouseRef.current.y = -((my) / img.height) * 2 + 1;
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+
+      // Convert to world coordinates
+      const worldX = camera.left + (mx / rect.width) * (camera.right - camera.left);
+      const worldY = camera.top - (my / rect.height) * (camera.top - camera.bottom);
+
+      mouseRef.current.x = (mx / rect.width) * 2 - 1;
+      mouseRef.current.y = -((my / rect.height) * 2 - 1);
+
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData.isPlot));
-      const overlay = document.getElementById('plot-overlay');
+      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData && c.userData.isPlot));
       if (intersects.length > 0 && intersects[0].object.visible) {
+        setHoverData(intersects[0].object.userData);
+        setHoverPos({ x: e.clientX, y: e.clientY });
         canvasRef.current.style.cursor = 'pointer';
-        const plot = intersects[0].object.userData;
-        // Ensure plot has expected properties
-        overlay.innerHTML = `
-          <b>Plot No:</b> ${plot.plotNo || 'N/A'}<br>
-          <b>Area:</b> ${plot.area ? plot.area + ' sq.yd' : 'N/A'}<br>
-          <b>Status:</b> ${plot.status || 'N/A'}<br>
-          <b>Price:</b> ${plot.price ? '₹' + plot.price.toLocaleString() : 'N/A'}
-        `;
-        overlay.style.display = 'block';
-        overlay.style.left = `${e.clientX + 10}px`;
-        overlay.style.top = `${e.clientY + 10}px`;
       } else {
+        setHoverData(null);
         canvasRef.current.style.cursor = 'default';
-        overlay.style.display = 'none';
       }
     };
 
@@ -173,38 +265,74 @@ const PlotViewer = () => {
       if (isDraggingRef.current) return;
       const img = imageRef.current;
       const camera = cameraRef.current;
-      const scene = sceneRef.current; // Fix: Use sceneRef.current
+      const scene = sceneRef.current;
       if (!img || !camera || !scene) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) + camera.position.x;
-      const my = (e.clientY - rect.top) - camera.position.y;
-      mouseRef.current.x = (mx / img.width) * 2 - 1;
-      mouseRef.current.y = -((my) / img.height) * 2 + 1;
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+
+      // Convert to NDC
+      mouseRef.current.x = (mx / rect.width) * 2 - 1;
+      mouseRef.current.y = -((my / rect.height) * 2 - 1);
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData.isPlot));
+      const intersects = raycasterRef.current.intersectObjects(scene.children.filter(c => c.userData && c.userData.isPlot));
       if (intersects.length > 0 && intersects[0].object.visible) {
         setSelectedPlot(intersects[0].object.userData);
         setShowPlotDialog(true);
       }
     };
 
-    const handleMouseLeave = () => {
-      document.getElementById('plot-overlay').style.display = 'none';
-    };
-
     const handleWheel = (e) => {
       e.preventDefault();
+      const camera = cameraRef.current;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
       const zoomIn = e.deltaY < 0;
-      zoomRef.current = clamp(zoomRef.current * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
-      updateZoomCamera();
+      const prevZoom = zoomRef.current;
+      const newZoom = clamp(prevZoom * (zoomIn ? 1.1 : 1 / 1.1), minZoom, maxZoom);
+      if (newZoom === prevZoom) return;
+      zoomRef.current = newZoom;
+
+      // Mouse position in normalized device coordinates
+      const ndcX = (mouseX / rect.width) * 2 - 1;
+      const ndcY = -((mouseY / rect.height) * 2 - 1);
+
+      // World position before zoom
+      const worldBefore = new THREE.Vector3(ndcX, ndcY, 0).unproject(camera);
+
+      // Update camera size
+      const width = imageRef.current.width / newZoom;
+      const height = imageRef.current.height / newZoom;
+      const cx = (camera.left + camera.right) / 2;
+      const cy = (camera.top + camera.bottom) / 2;
+      camera.left = cx - width / 2;
+      camera.right = cx + width / 2;
+      camera.top = cy + height / 2;
+      camera.bottom = cy - height / 2;
+      camera.updateProjectionMatrix();
+
+      // World position after zoom
+      const worldAfter = new THREE.Vector3(ndcX, ndcY, 0).unproject(camera);
+      const delta = worldBefore.sub(worldAfter);
+
+      // Apply correction to keep mouse anchor point stable
+      camera.left += delta.x;
+      camera.right += delta.x;
+      camera.top += delta.y;
+      camera.bottom += delta.y;
+      camera.updateProjectionMatrix();
+
+      updatePlotNumbers();
     };
+
 
     canvasRef.current?.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     canvasRef.current?.addEventListener('mousemove', handleMouseMove);
     canvasRef.current?.addEventListener('click', handleClick);
-    canvasRef.current?.addEventListener('mouseleave', handleMouseLeave);
-    canvasRef.current?.addEventListener('wheel', handleWheel);
+    canvasRef.current?.addEventListener('wheel', handleWheel, { passive: false });
 
     // Cleanup
     return () => {
@@ -212,14 +340,17 @@ const PlotViewer = () => {
       window.removeEventListener('mouseup', handleMouseUp);
       canvasRef.current?.removeEventListener('mousemove', handleMouseMove);
       canvasRef.current?.removeEventListener('click', handleClick);
-      canvasRef.current?.removeEventListener('mouseleave', handleMouseLeave);
       canvasRef.current?.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+    // eslint-disable-next-line
+  }, [currentImageUrl, selectedVenture]);
 
   // 2. Fetch Plots and Poll for Updates
   const fetchPlots = () => {
-    fetch('http://localhost:5000/api/plot', {
+    if (!selectedVenture) return;
+
+    const url = `${API_BASE}/plot?ventureId=${selectedVenture._id}`;
+    fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -231,19 +362,21 @@ const PlotViewer = () => {
         return res.json();
       })
       .then((data) => {
-        console.log('Fetched plots:', data.features); // Debug: Log fetched data
-        setPlots(data.features);
+        setPlots(data.features || []);
         setLastLoadedGeoJSON(data);
       })
       .catch((err) => {
-        console.error('Fetch error:', err);
-        setStatusMsg('Unauthorized or Error loading plots!');
+        console.error('Error fetching plots:', err);
       });
   };
 
+  // Poll for updates every 5s
   useEffect(() => {
+    if (!selectedVenture) return;
+
     const interval = setInterval(() => {
-      fetch('http://localhost:5000/api/plot', {
+      const url = `${API_BASE}/plot?ventureId=${selectedVenture._id}`;
+      fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -256,18 +389,17 @@ const PlotViewer = () => {
         })
         .then((data) => {
           if (JSON.stringify(data) !== JSON.stringify(lastLoadedGeoJSON)) {
-            console.log('GeoJSON updated:', data.features); // Debug: Log updates
-            setPlots(data.features);
+            setPlots(data.features || []);
             setLastLoadedGeoJSON(data);
           }
         })
         .catch((err) => {
-          console.error('Polling error:', err);
-          setStatusMsg('Error polling plots!');
+          console.error('Error polling plots:', err);
         });
     }, 5000);
     return () => clearInterval(interval);
-  }, [lastLoadedGeoJSON]);
+    // eslint-disable-next-line
+  }, [lastLoadedGeoJSON, selectedVenture]);
 
   // 3. Update Plot Meshes and Labels
   useEffect(() => {
@@ -280,7 +412,7 @@ const PlotViewer = () => {
     scene.children
       .filter((child) => child.userData && child.userData.isPlot)
       .forEach((mesh) => scene.remove(mesh));
-    plotNumberDivsRef.current.forEach((div) => div.remove());
+    plotLabelContainerRef.current && (plotLabelContainerRef.current.innerHTML = '');
     plotNumberDivsRef.current = [];
 
     // Add new plot meshes and labels
@@ -288,7 +420,7 @@ const PlotViewer = () => {
       const coords = feature.geometry.coordinates[0];
       const shape = new THREE.Shape();
       coords.forEach(([x, y], idx) => {
-        const yFlipped = imageRef.current.height - y; // Flip Y for Three.js
+        const yFlipped = imageRef.current.height - y;
         if (idx === 0) shape.moveTo(x, yFlipped);
         else shape.lineTo(x, yFlipped);
       });
@@ -299,121 +431,97 @@ const PlotViewer = () => {
         transparent: true,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { ...feature.properties, isPlot: true }; // Ensure userData is set
-      console.log('Mesh userData:', mesh.userData); // Debug: Log userData
+      mesh.userData = { ...feature.properties, isPlot: true };
       scene.add(mesh);
 
-      // Add plot number label
+      // Plot number label
       const centroid = polygonCentroid(coords);
       const div = document.createElement('div');
       div.className = 'plot-number';
       div.innerText = feature.properties.plotNo;
-      div.dataset.centroidX = centroid[0];
-      div.dataset.centroidY =  centroid[1]; // Flip Y
-      document.body.appendChild(div);
+      div.dataset.worldX = centroid[0];
+      div.dataset.worldY = imageRef.current.height - centroid[1];
+      div.style.position = 'absolute';
+      div.style.pointerEvents = 'none';
+      div.style.color = '#000';
+      div.style.background = 'rgba(255,255,255,0.82)';
+      div.style.padding = '4px 8px';
+      div.style.borderRadius = '4px';
+      div.style.fontSize = '12px';
+      div.style.fontWeight = 'bold';
+      div.style.userSelect = 'none';
+      plotLabelContainerRef.current && plotLabelContainerRef.current.appendChild(div);
       plotNumberDivsRef.current.push(div);
     });
 
     updatePlotNumbers();
     renderer.render(scene, camera);
-  }, [plots]);
+    // eslint-disable-next-line
+  }, [plots, imageWidth, imageHeight]);
 
   // 4. Update Plot Number Positions
   const updatePlotNumbers = () => {
-    const canvas = canvasRef.current;
     const camera = cameraRef.current;
-    if (!canvas || !camera) return;
+    const canvas = canvasRef.current;
+    const wrapper = canvasWrapperRef.current;
+    if (!camera || !canvas || !wrapper) return;
 
-    const canvasRect = canvas.getBoundingClientRect();
-    const camOffsetX = camera.position.x;
-    const camOffsetY = camera.position.y;
-    plotNumberDivsRef.current.forEach((div) => {
-      const x = +div.dataset.centroidX - camOffsetX;
-      const y = +div.dataset.centroidY + camOffsetY;
-      div.style.left = `${canvasRect.left + x}px`;
-      div.style.top = `${canvasRect.top + y}px`;
-      div.style.position = 'absolute';
-      div.style.transform = 'translate(-50%, -50%)';
+    const rect = wrapper.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    plotNumberDivsRef.current.forEach(div => {
+      const wx = parseFloat(div.dataset.worldX);
+      const wy = parseFloat(div.dataset.worldY);
+
+      const vector = new THREE.Vector3(wx, wy, 0).project(camera);
+      const screenX = (vector.x * 0.5 + 0.5) * w;
+      const screenY = (1 - (vector.y * 0.5 + 0.5)) * h;
+
+      if (screenX < 0 || screenY < 0 || screenX > w || screenY > h) {
+        div.style.display = 'none';
+      } else {
+        div.style.display = 'block';
+        div.style.left = `${screenX}px`;
+        div.style.top = `${screenY}px`;
+        div.style.transform = 'translate(-50%, -50%)';
+      }
     });
   };
 
-  // 5. Zoom Handling
+
+
+  // 5. Zoom Handling for Toolbar
   const handleZoom = (zoomIn) => {
-    zoomRef.current = clamp(zoomRef.current * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
-    updateZoomCamera();
-  };
-
-  const updateZoomCamera = () => {
-    const img = imageRef.current;
     const camera = cameraRef.current;
-    const renderer = rendererRef.current;
-    if (!img || !camera || !renderer) return;
-
-    const width = img.width;
-    const height = img.height;
-    camera.left = 0 - (width * (zoomRef.current - 1) / 2) + camera.position.x;
-    camera.right = width + (width * (zoomRef.current - 1) / 2) + camera.position.x;
-    camera.top = 0 - (height * (zoomRef.current - 1) / 2) + camera.position.y;
-    camera.bottom = height + (height * (zoomRef.current - 1) / 2) + camera.position.y;
+    const centerX = (camera.left + camera.right) / 2;
+    const centerY = (camera.top + camera.bottom) / 2;
+    const prevZoom = zoomRef.current;
+    const newZoom = clamp(prevZoom * (zoomIn ? 1.13 : 1 / 1.13), minZoom, maxZoom);
+    if (newZoom === prevZoom) return;
+    zoomRef.current = newZoom;
+    const width = imageRef.current.width / newZoom;
+    const height = imageRef.current.height / newZoom;
+    camera.left = centerX - width / 2;
+    camera.right = centerX + width / 2;
+    camera.top = centerY + height / 2;
+    camera.bottom = centerY - height / 2;
     camera.updateProjectionMatrix();
-    renderer.render(sceneRef.current, camera);
     updatePlotNumbers();
   };
 
+  // 6. Reset Handler
   const handleReset = () => {
     const img = imageRef.current;
     const camera = cameraRef.current;
-    const renderer = rendererRef.current;
-    if (!img || !camera || !renderer) return;
-
+    if (!img || !camera) return;
     zoomRef.current = 1;
-    camera.position.set(0, 0, 10);
     camera.left = 0;
     camera.right = img.width;
     camera.top = img.height;
     camera.bottom = 0;
     camera.updateProjectionMatrix();
-    renderer.render(sceneRef.current, camera);
     updatePlotNumbers();
-  };
-
-  // 6. Filter Plots
-  const handleFilterSubmit = (e) => {
-    e.preventDefault();
-    fetch('http://localhost:5000/api/plot', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Unauthorized');
-        return res.json();
-      })
-      .then((data) => {
-        const plotNos = filters.plotNos
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        let filtered = data.features.filter((p) => {
-          const props = p.properties;
-          return (
-            (!plotNos.length || plotNos.includes(String(props.plotNo))) &&
-            (filters.status === 'all' || props.status.toLowerCase() === filters.status.toLowerCase()) &&
-            (!filters.facing || props.facing.toLowerCase().includes(filters.facing.toLowerCase())) &&
-            (!filters.plotTypes || props.plotTypes.toLowerCase().includes(filters.plotTypes.toLowerCase())) &&
-            (!filters.minArea || props.area >= parseFloat(filters.minArea)) &&
-            (!filters.maxArea || props.area <= parseFloat(filters.maxArea))
-          );
-        });
-        setPlots(filtered);
-        setShowFilterModal(false);
-      })
-      .catch((err) => {
-        console.error('Filter error:', err);
-        setStatusMsg('Error filtering plots!');
-      });
   };
 
   // 7. Status Bar
@@ -452,7 +560,45 @@ const PlotViewer = () => {
     );
   };
 
-  // 8. Enquiry Submit
+  // 8. Filter Plots
+  const handleFilterSubmit = (e) => {
+    e.preventDefault();
+    fetch('http://localhost:5000/api/plot', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Unauthorized');
+        return res.json();
+      })
+      .then((data) => {
+        const plotNos = filters.plotNos
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let filtered = data.features.filter((p) => {
+          const props = p.properties;
+          return (
+            (!plotNos.length || plotNos.includes(String(props.plotNo))) &&
+            (filters.status === 'all' || props.status.toLowerCase() === filters.status.toLowerCase()) &&
+            (!filters.facing || props.facing.toLowerCase().includes(filters.facing.toLowerCase())) &&
+            (!filters.plotTypes || props.plotTypes.toLowerCase().includes(filters.plotTypes.toLowerCase())) &&
+            (!filters.minArea || props.area >= parseFloat(filters.minArea)) &&
+            (!filters.maxArea || props.area <= parseFloat(filters.maxArea))
+          );
+        });
+        setPlots(filtered);
+        setShowFilterModal(false);
+      })
+      .catch((err) => {
+        setStatusMsg('Error filtering plots!');
+      });
+  };
+
+  // 9. Booking Submit
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -470,25 +616,136 @@ const PlotViewer = () => {
         setStatusMsg('Error submitting enquiry!');
       }
     } catch (err) {
-      console.error('Booking error:', err);
       setStatusMsg('Error submitting enquiry!');
     }
   };
 
+  // ---- RENDER ----
   return (
-    <Container fluid style={{ height: '100vh', background: '#1f2937', padding: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* Status Message */}
-      <div style={{ color: '#16a34a', fontWeight: '500', padding: '8px', textAlign: 'center' }}>{statusMsg}</div>
-      {/* Status Bar */}
-      <div style={{ padding: '8px', background: '#fff', textAlign: 'center' }}>{renderStatusBar()}</div>
-      {/* Canvas */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 0, minWidth: 0 }}>
-        <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+    <Container fluid style={{ height: '100vh', background: '#0f172a', padding: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* V2: Venture Selector Header */}
+      <div style={{
+        background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+        padding: '0.75rem 1.5rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: '1px solid rgba(255,255,255,0.1)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <h4 style={{ color: '#fff', margin: 0, fontWeight: '600' }}>
+            🗺️ {selectedVenture?.name || 'Plot Viewer'}
+          </h4>
+          {ventures.length > 1 && (
+            <Form.Select
+              size="sm"
+              value={selectedVenture?._id || ''}
+              onChange={(e) => handleVentureChange(e.target.value)}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff',
+                borderRadius: '8px',
+                maxWidth: '200px'
+              }}
+            >
+              {ventures.map(v => (
+                <option key={v._id} value={v._id} style={{ background: '#1e293b' }}>
+                  {v.name}
+                </option>
+              ))}
+            </Form.Select>
+          )}
+          {venturesLoading && <Spinner animation="border" size="sm" variant="light" />}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {selectedVenture && (
+            <>
+              <Badge bg="info" style={{ borderRadius: '20px' }}>
+                📊 {plots.length} plots
+              </Badge>
+              <Badge
+                bg={selectedVenture.calibration?.isCalibrated ? 'success' : 'warning'}
+                style={{ borderRadius: '20px' }}
+              >
+                {selectedVenture.calibration?.isCalibrated ? '✓ Calibrated' : '⚠ Not Calibrated'}
+              </Badge>
+            </>
+          )}
+        </div>
       </div>
-      {/* Hover Overlay */}
-      <div id="plot-overlay" style={{ position: 'absolute', display: 'none', background: '#fff', padding: '8px', borderRadius: '4px', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', zIndex: 1000 }} />
+
+      {/* Status Message */}
+      {statusMsg && (
+        <div style={{ color: '#16a34a', fontWeight: '500', padding: '8px', textAlign: 'center', background: 'rgba(22, 163, 74, 0.1)' }}>
+          {statusMsg}
+        </div>
+      )}
+      {/* Status Bar */}
+      <div style={{ padding: '8px', background: 'rgba(255,255,255,0.95)', textAlign: 'center' }}>{renderStatusBar()}</div>
+      {/* Canvas + Labels */}
+      <div
+        ref={canvasWrapperRef}
+        style={{
+          position: 'relative',
+          width: imageWidth ? `${imageWidth}px` : '100%',
+          height: imageHeight ? `${imageHeight}px` : '100%',
+          margin: '0 auto',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#1f2937',
+          overflow: 'hidden' // ✅ Prevent overflow
+        }}
+      >
+        <canvas ref={canvasRef} style={{ display: 'block' }} />
+        <div
+          ref={plotLabelContainerRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+            zIndex: 11
+          }}
+        />
+        {/* Hover Overlay */}
+        {hoverData && (
+          <div
+            style={{
+              position: 'fixed',
+              left: hoverPos.x + 16,
+              top: hoverPos.y + 16,
+              background: '#fff',
+              color: '#000',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+              zIndex: 1001,
+              pointerEvents: 'none',
+              fontSize: '14px',
+              lineHeight: '1.6'
+            }}
+          >
+            <div style={{ color: '#000', fontWeight: '700', marginBottom: '4px', fontSize: '15px' }}>
+              Plot #{hoverData.plotNo || 'N/A'}
+            </div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Area:</b> {hoverData.area ? hoverData.area + ' sq.yd' : 'N/A'}</div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Status:</b> <span style={{
+              color: hoverData.status?.toLowerCase() === 'available' ? '#16a34a' :
+                hoverData.status?.toLowerCase() === 'sold' ? '#dc2626' :
+                  hoverData.status?.toLowerCase() === 'reserved' ? '#d97706' : '#333',
+              fontWeight: '600'
+            }}>{hoverData.status || 'N/A'}</span></div>
+            <div style={{ color: '#333' }}><b style={{ color: '#000' }}>Price:</b> {hoverData.price ? '₹' + hoverData.price.toLocaleString() : 'N/A'}</div>
+          </div>
+        )}
+      </div>
       {/* Toolbar */}
-      <div style={{ position: 'absolute', bottom: '16px', right: '16px', display: 'flex', gap: '8px' }}>
+      <div style={{ position: 'absolute', bottom: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 2000 }}>
         <Button variant="light" onClick={() => handleZoom(true)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>+</Button>
         <Button variant="light" onClick={() => handleZoom(false)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>−</Button>
         <Button variant="light" onClick={() => setShowFilterModal(true)} style={{ padding: '8px 16px', fontSize: '1rem', borderRadius: '6px' }}>▼ Filter</Button>
@@ -567,89 +824,799 @@ const PlotViewer = () => {
             >
               Reset Filters
             </Button>
-        </Form>
-      </Modal.Body>
+          </Form>
+        </Modal.Body>
       </Modal>
       {/* Plot Dialog */}
-      <Modal show={showPlotDialog} onHide={() => setShowPlotDialog(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Plot {selectedPlot?.plotNo}</Modal.Title>
+      <Modal
+        show={showPlotDialog}
+        onHide={() => setShowPlotDialog(false)}
+        centered
+        size="lg"
+        style={{
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}
+      >
+        <Modal.Header
+          closeButton
+          style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem 0.375rem 0 0',
+            padding: '1.5rem'
+          }}
+        >
+          <Modal.Title
+            style={{
+              fontSize: '1.5rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}
+          >
+            📍 Plot {selectedPlot?.plotNo}
+            {selectedPlot?.status && (
+              <span
+                style={{
+                  backgroundColor: selectedPlot.status?.toLowerCase() === 'available' ? '#28a745' :
+                    selectedPlot.status?.toLowerCase() === 'booked' ? '#ffc107' :
+                      selectedPlot.status?.toLowerCase() === 'sold' ? '#dc3545' : '#6c757d',
+                  color: 'white',
+                  padding: '0.375rem 0.75rem',
+                  borderRadius: '1.25rem',
+                  fontSize: '0.75rem',
+                  fontWeight: '600'
+                }}
+              >
+                {selectedPlot.status}
+              </span>
+            )}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+
+        <Modal.Body
+          style={{
+            padding: '0',
+            background: '#f8f9fa',
+            maxHeight: '70vh',
+            overflowY: 'auto'
+          }}
+        >
           {selectedPlot && (
-            <div>
-              <div><b>Status:</b> {selectedPlot.status || 'N/A'}</div>
-              <div><b>Facing:</b> {selectedPlot.facing || 'N/A'}</div>
-              <div><b>Measurements:</b> {selectedPlot.measurements || 'N/A'}</div>
-              <div><b>Area:</b> {selectedPlot.area ? `${selectedPlot.area} sq.yd` : 'N/A'}</div>
-              <div><b>Boundaries:</b> {selectedPlot.boundaries || 'N/A'}</div>
-              <div><b>Notes:</b> {selectedPlot.notes || 'N/A'}</div>
-              <div><b>Plot Type(s):</b> {selectedPlot.plotTypes || 'N/A'}</div>
-              <div><b>Pricing:</b> {selectedPlot.price ? `₹${selectedPlot.price.toLocaleString()}` : 'N/A'}</div>
-              <div><b>Survey No:</b> {selectedPlot.surveyNo || 'N/A'}</div>
-              <div><b>Location Pin:</b> {selectedPlot.locationPin || 'N/A'}</div>
-              <div><b>Address:</b> {selectedPlot.address || 'N/A'}</div>
-              {selectedPlot.status.toLowerCase() === 'available' && (
-                <Button
-                  variant="success"
-                  onClick={() => {
-                    setShowBookingModal(true);
-                    setShowPlotDialog(false);
+            <div style={{ padding: '1.5rem' }}>
+
+              {/* Price Highlight Card */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                  color: 'white',
+                  borderRadius: '0.75rem',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  marginBottom: '1.5rem',
+                  boxShadow: '0 0.5rem 2rem rgba(17, 153, 142, 0.3)'
+                }}
+              >
+                <h3
+                  style={{
+                    margin: '0 0 0.5rem 0',
+                    fontSize: '2.2rem',
+                    fontWeight: '700'
                   }}
-                  style={{ marginTop: '16px', width: '100%' }}
                 >
-                  Book This Plot
-                </Button>
+                  {selectedPlot.price ?
+                    (selectedPlot.price >= 10000000 ?
+                      `₹${(selectedPlot.price / 10000000).toFixed(2)} Cr` :
+                      selectedPlot.price >= 100000 ?
+                        `₹${(selectedPlot.price / 100000).toFixed(2)} L` :
+                        `₹${selectedPlot.price.toLocaleString()}`
+                    ) : 'Price on Request'
+                  }
+                </h3>
+                <p
+                  style={{
+                    margin: '0',
+                    fontSize: '1.1rem',
+                    opacity: '0.9'
+                  }}
+                >
+                  {selectedPlot.area ? `${selectedPlot.area} sq.yd` : 'Area details available'}
+                </p>
+              </div>
+
+              {/* Two Column Layout */}
+              <div className="row" style={{ marginBottom: '1.5rem' }}>
+
+                {/* Property Details Column */}
+                <div className="col-md-6" style={{ marginBottom: '1.25rem' }}>
+                  <div
+                    style={{
+                      backgroundColor: 'white',
+                      borderRadius: '0.75rem',
+                      overflow: 'hidden',
+                      boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+                      height: '100%',
+                      transition: 'transform 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        color: 'white',
+                        padding: '1rem 1.25rem',
+                        fontWeight: '600',
+                        fontSize: '1.1rem'
+                      }}
+                    >
+                      🏗️ Property Details
+                    </div>
+                    <div style={{ padding: '1.25rem' }}>
+
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          FACING:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '1.05rem',
+                            color: '#212529',
+                            fontWeight: '500'
+                          }}
+                        >
+                          🧭 {selectedPlot.facing || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          MEASUREMENTS:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '1.05rem',
+                            color: '#212529',
+                            fontWeight: '500'
+                          }}
+                        >
+                          📐 {selectedPlot.measurements || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '0' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem'
+                          }}
+                        >
+                          PLOT TYPE(S):
+                        </div>
+                        <div>
+                          {selectedPlot.plotTypes ?
+                            selectedPlot.plotTypes.split(',').map((type, index) => (
+                              <span
+                                key={index}
+                                style={{
+                                  backgroundColor: '#667eea',
+                                  color: 'white',
+                                  padding: '0.375rem 0.75rem',
+                                  borderRadius: '1.25rem',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '500',
+                                  marginRight: '0.5rem',
+                                  marginBottom: '0.25rem',
+                                  display: 'inline-block'
+                                }}
+                              >
+                                {type.trim()}
+                              </span>
+                            )) : <span style={{ color: '#6c757d' }}>N/A</span>
+                          }
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+
+                {/* Location Details Column */}
+                <div className="col-md-6" style={{ marginBottom: '1.25rem' }}>
+                  <div
+                    style={{
+                      backgroundColor: 'white',
+                      borderRadius: '0.75rem',
+                      overflow: 'hidden',
+                      boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+                      height: '100%',
+                      transition: 'transform 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                        color: 'white',
+                        padding: '1rem 1.25rem',
+                        fontWeight: '600',
+                        fontSize: '1.1rem'
+                      }}
+                    >
+                      📍 Location & Legal
+                    </div>
+                    <div style={{ padding: '1.25rem' }}>
+
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          SURVEY NO:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '1.05rem',
+                            color: '#212529',
+                            fontWeight: '500'
+                          }}
+                        >
+                          📋 {selectedPlot.surveyNo || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          LOCATION PIN:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.95rem',
+                            color: '#212529',
+                            fontWeight: '500',
+                            fontFamily: 'monospace'
+                          }}
+                        >
+                          🎯 {selectedPlot.locationPin || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '0' }}>
+                        <div
+                          style={{
+                            color: '#495057',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          ADDRESS:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '1rem',
+                            color: '#212529',
+                            lineHeight: '1.5',
+                            fontWeight: '500'
+                          }}
+                        >
+                          🏠 {selectedPlot.address || 'N/A'}
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Information */}
+              <div
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '0.75rem',
+                  overflow: 'hidden',
+                  boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.08)',
+                  marginBottom: '1.5rem'
+                }}
+              >
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                    color: 'white',
+                    padding: '1rem 1.25rem',
+                    fontWeight: '600',
+                    fontSize: '1.1rem'
+                  }}
+                >
+                  ℹ️ Additional Information
+                </div>
+                <div style={{ padding: '1.25rem' }}>
+                  <div className="row">
+                    <div className="col-md-6" style={{ marginBottom: '1rem' }}>
+                      <div
+                        style={{
+                          color: '#495057',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase',
+                          marginBottom: '0.25rem'
+                        }}
+                      >
+                        BOUNDARIES:
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1rem',
+                          color: '#212529',
+                          lineHeight: '1.5',
+                          fontWeight: '500'
+                        }}
+                      >
+                        🔲 {selectedPlot.boundaries || 'N/A'}
+                      </div>
+                    </div>
+                    <div className="col-md-6" style={{ marginBottom: '1rem' }}>
+                      <div
+                        style={{
+                          color: '#495057',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase',
+                          marginBottom: '0.25rem'
+                        }}
+                      >
+                        NOTES:
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1rem',
+                          color: '#212529',
+                          lineHeight: '1.5',
+                          fontWeight: '500'
+                        }}
+                      >
+                        📝 {selectedPlot.notes || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              {selectedPlot.status?.toLowerCase() === 'available' && (
+                <div style={{ textAlign: 'center' }}>
+                  <Button
+                    size="lg"
+                    onClick={() => {
+                      setShowBookingModal(true);
+                      setShowPlotDialog(false);
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      border: 'none',
+                      borderRadius: '3.125rem',
+                      padding: '1rem 3rem',
+                      fontSize: '1.1rem',
+                      fontWeight: '600',
+                      boxShadow: '0 0.5rem 2rem rgba(102, 126, 234, 0.4)',
+                      transition: 'all 0.3s ease',
+                      minWidth: '200px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 0.75rem 2.5rem rgba(102, 126, 234, 0.5)';
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #5a6fd8 0%, #6b5a8f 100%)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 0.5rem 2rem rgba(102, 126, 234, 0.4)';
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    }}
+                  >
+                    🎯 Book This Plot
+                  </Button>
+                </div>
               )}
             </div>
           )}
         </Modal.Body>
       </Modal>
       {/* Booking Modal */}
-      <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Book Plot {selectedPlot?.plotNo}</Modal.Title>
+      <Modal
+        show={showBookingModal}
+        onHide={() => setShowBookingModal(false)}
+        centered
+        size="lg"
+        style={{
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}
+      >
+        <Modal.Header
+          closeButton
+          style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem 0.375rem 0 0',
+            padding: '1.5rem'
+          }}
+        >
+          <Modal.Title
+            style={{
+              fontSize: '1.5rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}
+          >
+            🎯 Book Plot {selectedPlot?.plotNo}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          <Form onSubmit={handleBookingSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Name</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Phone</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Email</Form.Label>
-              <Form.Control
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Message</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              />
-            </Form.Group>
-            <Button variant="primary" type="submit" style={{ background: 'linear-gradient(to right, #4f46e5, #3b82f6)', border: 'none' }}>
-              Submit Enquiry
-            </Button>
-          </Form>
+
+        <Modal.Body
+          style={{
+            background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+            padding: '0'
+          }}
+        >
+          <div style={{ padding: '2rem' }}>
+
+            {/* Plot Summary Card */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                color: 'white',
+                borderRadius: '0.75rem',
+                padding: '1.5rem',
+                marginBottom: '2rem',
+                textAlign: 'center',
+                boxShadow: '0 0.5rem 1.5rem rgba(17, 153, 142, 0.3)'
+              }}
+            >
+              <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: '600' }}>
+                Plot {selectedPlot?.plotNo} - {selectedPlot?.area ? `${selectedPlot.area} sq.yd` : 'Premium Location'}
+              </h4>
+              <p style={{ margin: '0', opacity: '0.9', fontSize: '1.1rem' }}>
+                {selectedPlot?.price ?
+                  (selectedPlot.price >= 10000000 ?
+                    `₹${(selectedPlot.price / 10000000).toFixed(2)} Cr` :
+                    selectedPlot.price >= 100000 ?
+                      `₹${(selectedPlot.price / 100000).toFixed(2)} L` :
+                      `₹${selectedPlot.price.toLocaleString()}`
+                  ) : 'Price on Request'
+                }
+              </p>
+            </div>
+
+            <Form onSubmit={handleBookingSubmit} >
+
+              {/* Personal Information Section */}
+              <div
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '0.75rem',
+                  padding: '1.5rem',
+                  marginBottom: '1.5rem',
+                  boxShadow: '0 0.25rem 1rem rgba(0,0,0,0.08)',
+                  border: '1px solid #e9ecef'
+                }}
+              >
+                <h5
+                  style={{
+                    color: '#495057',
+                    marginBottom: '1.25rem',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  👤 Personal Information
+                </h5>
+
+                <div className="row">
+                  <div className="col-md-6">
+                    <Form.Group className="mb-3">
+                      <Form.Label
+                        style={{
+                          fontWeight: '600',
+                          color: '#495057',
+                          marginBottom: '0.5rem'
+                        }}
+                      >
+                        Full Name *
+                      </Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                        placeholder="Enter your full name"
+                        style={{
+                          borderRadius: '0.5rem',
+                          border: '2px solid #e9ecef',
+                          padding: '0.75rem 1rem',
+                          fontSize: '1rem',
+                          transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = '#667eea';
+                          e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = '#e9ecef';
+                          e.target.style.boxShadow = 'none';
+                        }}
+                      />
+                    </Form.Group>
+                  </div>
+
+                  <div className="col-md-6">
+                    <Form.Group className="mb-3">
+                      <Form.Label
+                        style={{
+                          fontWeight: '600',
+                          color: '#495057',
+                          marginBottom: '0.5rem'
+                        }}
+                      >
+                        Phone Number
+                      </Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="Enter your phone number"
+                        style={{
+                          borderRadius: '0.5rem',
+                          border: '2px solid #e9ecef',
+                          padding: '0.75rem 1rem',
+                          fontSize: '1rem',
+                          transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = '#667eea';
+                          e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = '#e9ecef';
+                          e.target.style.boxShadow = 'none';
+                        }}
+                      />
+                    </Form.Group>
+                  </div>
+                </div>
+
+                <Form.Group className="mb-0">
+                  <Form.Label
+                    style={{
+                      fontWeight: '600',
+                      color: '#495057',
+                      marginBottom: '0.5rem'
+                    }}
+                  >
+                    Email Address
+                  </Form.Label>
+                  <Form.Control
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="Enter your email address"
+                    style={{
+                      borderRadius: '0.5rem',
+                      border: '2px solid #e9ecef',
+                      padding: '0.75rem 1rem',
+                      fontSize: '1rem',
+                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#667eea';
+                      e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#e9ecef';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                  />
+                </Form.Group>
+              </div>
+
+              {/* Message Section */}
+              <div
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '0.75rem',
+                  padding: '1.5rem',
+                  marginBottom: '2rem',
+                  boxShadow: '0 0.25rem 1rem rgba(0,0,0,0.08)',
+                  border: '1px solid #e9ecef'
+                }}
+              >
+                <h5
+                  style={{
+                    color: '#495057',
+                    marginBottom: '1.25rem',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  💬 Additional Message
+                </h5>
+
+                <Form.Group className="mb-0">
+                  <Form.Label
+                    style={{
+                      fontWeight: '600',
+                      color: '#495057',
+                      marginBottom: '0.5rem'
+                    }}
+                  >
+                    Your Message (Optional)
+                  </Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                    placeholder="Tell us about your requirements, preferred payment terms, or any questions you have..."
+                    style={{
+                      borderRadius: '0.5rem',
+                      border: '2px solid #e9ecef',
+                      padding: '0.75rem 1rem',
+                      fontSize: '1rem',
+                      resize: 'vertical',
+                      minHeight: '120px',
+                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#667eea';
+                      e.target.style.boxShadow = '0 0 0 0.25rem rgba(102, 126, 234, 0.15)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#e9ecef';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                  />
+                </Form.Group>
+              </div>
+
+              {/* Action Buttons */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  justifyContent: 'center',
+                  flexWrap: 'wrap'
+                }}
+              >
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setShowBookingModal(false)}
+                  size="lg"
+                  style={{
+                    borderRadius: '3.125rem',
+                    padding: '0.75rem 2rem',
+                    fontWeight: '600',
+                    border: '2px solid #6c757d',
+                    color: '#6c757d',
+                    transition: 'all 0.2s ease',
+                    minWidth: '120px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#6c757d';
+                    e.currentTarget.style.color = 'white';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#6c757d';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    borderRadius: '3.125rem',
+                    padding: '0.75rem 2.5rem',
+                    fontSize: '1.1rem',
+                    fontWeight: '600',
+                    boxShadow: '0 0.5rem 1.5rem rgba(102, 126, 234, 0.4)',
+                    transition: 'all 0.3s ease',
+                    minWidth: '180px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 0.75rem 2rem rgba(102, 126, 234, 0.5)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #5a6fd8 0%, #6b5a8f 100%)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 0.5rem 1.5rem rgba(102, 126, 234, 0.4)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                  }}
+                >
+                  📧 Submit Enquiry
+                </Button>
+              </div>
+
+              {/* Privacy Notice */}
+              <div
+                style={{
+                  textAlign: 'center',
+                  marginTop: '1.5rem',
+                  padding: '1rem',
+                  backgroundColor: 'rgba(102, 126, 234, 0.05)',
+                  borderRadius: '0.5rem',
+                  border: '1px solid rgba(102, 126, 234, 0.1)'
+                }}
+              >
+                <small
+                  style={{
+                    color: '#6c757d',
+                    fontSize: '0.875rem',
+                    lineHeight: '1.4'
+                  }}
+                >
+                  🔒 Your information is secure and will only be used to contact you regarding this plot enquiry.
+                  We respect your privacy and won't share your details with third parties.
+                </small>
+              </div>
+
+            </Form>
+          </div>
         </Modal.Body>
       </Modal>
     </Container>

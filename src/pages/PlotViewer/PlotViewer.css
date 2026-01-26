@@ -7,6 +7,8 @@
   font-size: 12px;
   font-weight: bold;
   pointer-events: none;
+  z-index: 12;
+  transform: translate(-50%, -50%); /* ✅ Centered positioning */
 }
 
 .status-bar {

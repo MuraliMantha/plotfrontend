@@ -10,6 +10,13 @@ const PlotViewer = () => {
   const canvasWrapperRef = useRef(null);
   const plotLabelContainerRef = useRef(null);
 
+  // V3: MOBILE RESPONSIVE STATE
+  const [isMobile, setIsMobile] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const touchStartRef = useRef({ x: 0, y: 0, distance: 0 });
+  const lastPinchDistanceRef = useRef(0);
+
   // V2: VENTURE STATE
   const [ventures, setVentures] = useState([]);
   const [selectedVenture, setSelectedVenture] = useState(null);
@@ -56,6 +63,17 @@ const PlotViewer = () => {
 
   const [imageWidth, setImageWidth] = useState(null);
   const [imageHeight, setImageHeight] = useState(null);
+
+  // V3: Responsive detection
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // V2: Fetch ventures on mount
   useEffect(() => {
@@ -328,11 +346,119 @@ const PlotViewer = () => {
     };
 
 
+    // V3: Touch event handlers for mobile
+    const getTouchDistance = (touches) => {
+      if (touches.length < 2) return 0;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        isDraggingRef.current = true;
+        touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        lastMouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        // Pinch gesture start
+        e.preventDefault();
+        isDraggingRef.current = false;
+        lastPinchDistanceRef.current = getTouchDistance(e.touches);
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      const camera = cameraRef.current;
+      if (!camera) return;
+
+      if (e.touches.length === 1 && isDraggingRef.current) {
+        // Single finger pan
+        const dx = e.touches[0].clientX - lastMouseRef.current.x;
+        const dy = e.touches[0].clientY - lastMouseRef.current.y;
+        lastMouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+
+        const worldDX = (dx / rect.width) * (camera.right - camera.left);
+        const worldDY = (dy / rect.height) * (camera.top - camera.bottom);
+
+        camera.left -= worldDX;
+        camera.right -= worldDX;
+        camera.top += worldDY;
+        camera.bottom += worldDY;
+        camera.updateProjectionMatrix();
+        updatePlotNumbers();
+      } else if (e.touches.length === 2) {
+        // Pinch to zoom
+        e.preventDefault();
+        const currentDistance = getTouchDistance(e.touches);
+        const pinchDelta = currentDistance - lastPinchDistanceRef.current;
+
+        if (Math.abs(pinchDelta) > 2) {
+          const zoomIn = pinchDelta > 0;
+          const prevZoom = zoomRef.current;
+          const newZoom = clamp(prevZoom * (zoomIn ? 1.03 : 0.97), minZoom, maxZoom);
+
+          if (newZoom !== prevZoom) {
+            zoomRef.current = newZoom;
+            const width = imageRef.current.width / newZoom;
+            const height = imageRef.current.height / newZoom;
+            const cx = (camera.left + camera.right) / 2;
+            const cy = (camera.top + camera.bottom) / 2;
+            camera.left = cx - width / 2;
+            camera.right = cx + width / 2;
+            camera.top = cy + height / 2;
+            camera.bottom = cy - height / 2;
+            camera.updateProjectionMatrix();
+            updatePlotNumbers();
+          }
+          lastPinchDistanceRef.current = currentDistance;
+        }
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (e.touches.length === 0) {
+        // Check for tap (click on plot)
+        const touchEnd = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+        const dx = Math.abs(touchEnd.x - touchStartRef.current.x);
+        const dy = Math.abs(touchEnd.y - touchStartRef.current.y);
+
+        if (dx < 10 && dy < 10) {
+          // This was a tap, not a drag
+          const rect = canvasRef.current.getBoundingClientRect();
+          const mx = touchEnd.x - rect.left;
+          const my = touchEnd.y - rect.top;
+
+          mouseRef.current.x = (mx / rect.width) * 2 - 1;
+          mouseRef.current.y = -((my / rect.height) * 2 - 1);
+          raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+
+          const intersects = raycasterRef.current.intersectObjects(
+            sceneRef.current.children.filter(c => c.userData && c.userData.isPlot)
+          );
+
+          if (intersects.length > 0 && intersects[0].object.visible) {
+            setSelectedPlot(intersects[0].object.userData);
+            setShowPlotDialog(true);
+          }
+        }
+        isDraggingRef.current = false;
+      }
+      lastPinchDistanceRef.current = 0;
+    };
+
     canvasRef.current?.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     canvasRef.current?.addEventListener('mousemove', handleMouseMove);
     canvasRef.current?.addEventListener('click', handleClick);
     canvasRef.current?.addEventListener('wheel', handleWheel, { passive: false });
+
+    // V3: Mobile touch events
+    canvasRef.current?.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvasRef.current?.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvasRef.current?.addEventListener('touchend', handleTouchEnd);
 
     // Cleanup
     return () => {
@@ -341,6 +467,9 @@ const PlotViewer = () => {
       canvasRef.current?.removeEventListener('mousemove', handleMouseMove);
       canvasRef.current?.removeEventListener('click', handleClick);
       canvasRef.current?.removeEventListener('wheel', handleWheel);
+      canvasRef.current?.removeEventListener('touchstart', handleTouchStart);
+      canvasRef.current?.removeEventListener('touchmove', handleTouchMove);
+      canvasRef.current?.removeEventListener('touchend', handleTouchEnd);
     };
     // eslint-disable-next-line
   }, [currentImageUrl, selectedVenture]);
@@ -524,7 +653,7 @@ const PlotViewer = () => {
     updatePlotNumbers();
   };
 
-  // 7. Status Bar
+  // 7. Status Bar - V3 Responsive
   const renderStatusBar = () => {
     const counts = {
       total: plots.length,
@@ -546,16 +675,36 @@ const PlotViewer = () => {
       else if (status === 'booked') counts.booked++;
       else if (status === 'reserved') counts.reserved++;
     });
+
+    // Responsive badge style
+    const badgeStyle = {
+      fontSize: isMobile ? '0.7rem' : '0.85rem',
+      padding: isMobile ? '3px 6px' : '4px 10px',
+      margin: isMobile ? '0 2px' : '0 4px',
+      borderRadius: '6px',
+      whiteSpace: 'nowrap',
+      display: 'inline-block'
+    };
+
     return (
-      <div className="status-bar">
-        <span className="status-badge status-total">🗺️ Total: {counts.total}</span>
-        <span className="status-badge status-available">✔️ Available: {counts.available}</span>
-        <span className="status-badge status-hold">⏸️ Hold: {counts.hold}</span>
-        <span className="status-badge status-sold">❌ Sold: {counts.sold}</span>
-        <span className="status-badge status-tentative">❎ Tentatively Booked: {counts.tentatively_booked}</span>
-        <span className="status-badge status-cip">✖️ CIP: {counts.cip}</span>
-        <span className="status-badge status-booked">📜 Booked: {counts.booked}</span>
-        <span className="status-badge status-reserved">🔒 Reserved: {counts.reserved}</span>
+      <div
+        className="status-bar status-bar-mobile"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isMobile ? 'flex-start' : 'center',
+          gap: isMobile ? '4px' : '8px',
+          flexWrap: isMobile ? 'nowrap' : 'wrap'
+        }}
+      >
+        <span className="status-badge status-total" style={badgeStyle}>🗺️ {isMobile ? '' : 'Total: '}{counts.total}</span>
+        <span className="status-badge status-available" style={badgeStyle}>✔️ {isMobile ? '' : 'Available: '}{counts.available}</span>
+        {!isMobile && <span className="status-badge status-hold" style={badgeStyle}>⏸️ Hold: {counts.hold}</span>}
+        <span className="status-badge status-sold" style={badgeStyle}>❌ {isMobile ? '' : 'Sold: '}{counts.sold}</span>
+        {!isMobile && <span className="status-badge status-tentative" style={badgeStyle}>❎ Tentatively Booked: {counts.tentatively_booked}</span>}
+        {!isMobile && <span className="status-badge status-cip" style={badgeStyle}>✖️ CIP: {counts.cip}</span>}
+        <span className="status-badge status-booked" style={badgeStyle}>📜 {isMobile ? '' : 'Booked: '}{counts.booked}</span>
+        {!isMobile && <span className="status-badge status-reserved" style={badgeStyle}>🔒 Reserved: {counts.reserved}</span>}
       </div>
     );
   };
@@ -622,18 +771,35 @@ const PlotViewer = () => {
 
   // ---- RENDER ----
   return (
-    <Container fluid style={{ height: '100vh', background: '#0f172a', padding: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* V2: Venture Selector Header */}
+    <Container fluid style={{ height: '100vh', background: '#0f172a', padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* V3: Responsive Header */}
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
-        padding: '0.75rem 1.5rem',
+        padding: isMobile ? '0.5rem 0.75rem' : '0.75rem 1.5rem',
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(255,255,255,0.1)'
+        alignItems: isMobile ? 'stretch' : 'center',
+        gap: isMobile ? '0.5rem' : '0',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        flexShrink: 0
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h4 style={{ color: '#fff', margin: 0, fontWeight: '600' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobile ? '0.5rem' : '1rem',
+          justifyContent: isMobile ? 'space-between' : 'flex-start'
+        }}>
+          <h4 style={{
+            color: '#fff',
+            margin: 0,
+            fontWeight: '600',
+            fontSize: isMobile ? '1rem' : '1.25rem',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: isMobile ? '150px' : 'none'
+          }}>
             🗺️ {selectedVenture?.name || 'Plot Viewer'}
           </h4>
           {ventures.length > 1 && (
@@ -646,7 +812,9 @@ const PlotViewer = () => {
                 border: '1px solid rgba(255,255,255,0.2)',
                 color: '#fff',
                 borderRadius: '8px',
-                maxWidth: '200px'
+                maxWidth: isMobile ? '140px' : '200px',
+                fontSize: isMobile ? '0.8rem' : '0.875rem',
+                padding: isMobile ? '0.25rem 0.5rem' : '0.375rem 0.75rem'
               }}
             >
               {ventures.map(v => (
@@ -658,18 +826,25 @@ const PlotViewer = () => {
           )}
           {venturesLoading && <Spinner animation="border" size="sm" variant="light" />}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          justifyContent: isMobile ? 'center' : 'flex-end'
+        }}>
           {selectedVenture && (
             <>
-              <Badge bg="info" style={{ borderRadius: '20px' }}>
+              <Badge bg="info" style={{ borderRadius: '20px', fontSize: isMobile ? '0.65rem' : '0.75rem' }}>
                 📊 {plots.length} plots
               </Badge>
-              <Badge
-                bg={selectedVenture.calibration?.isCalibrated ? 'success' : 'warning'}
-                style={{ borderRadius: '20px' }}
-              >
-                {selectedVenture.calibration?.isCalibrated ? '✓ Calibrated' : '⚠ Not Calibrated'}
-              </Badge>
+              {!isMobile && (
+                <Badge
+                  bg={selectedVenture.calibration?.isCalibrated ? 'success' : 'warning'}
+                  style={{ borderRadius: '20px' }}
+                >
+                  {selectedVenture.calibration?.isCalibrated ? '✓ Calibrated' : '⚠ Not Calibrated'}
+                </Badge>
+              )}
             </>
           )}
         </div>
@@ -677,29 +852,53 @@ const PlotViewer = () => {
 
       {/* Status Message */}
       {statusMsg && (
-        <div style={{ color: '#16a34a', fontWeight: '500', padding: '8px', textAlign: 'center', background: 'rgba(22, 163, 74, 0.1)' }}>
+        <div style={{
+          color: '#16a34a',
+          fontWeight: '500',
+          padding: isMobile ? '6px' : '8px',
+          textAlign: 'center',
+          background: 'rgba(22, 163, 74, 0.1)',
+          fontSize: isMobile ? '0.8rem' : '0.875rem'
+        }}>
           {statusMsg}
         </div>
       )}
-      {/* Status Bar */}
-      <div style={{ padding: '8px', background: 'rgba(255,255,255,0.95)', textAlign: 'center' }}>{renderStatusBar()}</div>
-      {/* Canvas + Labels */}
+      {/* V3: Responsive Status Bar */}
+      <div style={{
+        padding: isMobile ? '4px 8px' : '8px',
+        background: 'rgba(255,255,255,0.95)',
+        textAlign: 'center',
+        flexShrink: 0,
+        overflowX: 'auto',
+        whiteSpace: 'nowrap'
+      }}>
+        {renderStatusBar()}
+      </div>
+      {/* V3: Responsive Canvas Container */}
       <div
         ref={canvasWrapperRef}
         style={{
           position: 'relative',
-          width: imageWidth ? `${imageWidth}px` : '100%',
-          height: imageHeight ? `${imageHeight}px` : '100%',
-          margin: '0 auto',
+          width: '100%',
+          height: '100%',
           flex: 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           background: '#1f2937',
-          overflow: 'hidden' // ✅ Prevent overflow
+          overflow: 'hidden',
+          touchAction: 'none' // Prevent default touch behaviors
         }}
       >
-        <canvas ref={canvasRef} style={{ display: 'block' }} />
+        <canvas
+          ref={canvasRef}
+          style={{
+            display: 'block',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            touchAction: 'none'
+          }}
+        />
         <div
           ref={plotLabelContainerRef}
           style={{
@@ -712,13 +911,13 @@ const PlotViewer = () => {
             zIndex: 11
           }}
         />
-        {/* Hover Overlay */}
-        {hoverData && (
+        {/* Hover Overlay - Hide on mobile (use tap to select instead) */}
+        {hoverData && !isMobile && (
           <div
             style={{
               position: 'fixed',
-              left: hoverPos.x + 16,
-              top: hoverPos.y + 16,
+              left: Math.min(hoverPos.x + 16, windowSize.width - 200),
+              top: Math.min(hoverPos.y + 16, windowSize.height - 150),
               background: '#fff',
               color: '#000',
               padding: '12px 16px',
@@ -727,7 +926,8 @@ const PlotViewer = () => {
               zIndex: 1001,
               pointerEvents: 'none',
               fontSize: '14px',
-              lineHeight: '1.6'
+              lineHeight: '1.6',
+              maxWidth: '220px'
             }}
           >
             <div style={{ color: '#000', fontWeight: '700', marginBottom: '4px', fontSize: '15px' }}>
@@ -744,19 +944,81 @@ const PlotViewer = () => {
           </div>
         )}
       </div>
-      {/* Toolbar */}
-      <div style={{ position: 'absolute', bottom: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 2000 }}>
-        <Button variant="light" onClick={() => handleZoom(true)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>+</Button>
-        <Button variant="light" onClick={() => handleZoom(false)} style={{ padding: '8px 16px', fontSize: '1.25rem', borderRadius: '6px' }}>−</Button>
-        <Button variant="light" onClick={() => setShowFilterModal(true)} style={{ padding: '8px 16px', fontSize: '1rem', borderRadius: '6px' }}>▼ Filter</Button>
-        <Button variant="light" onClick={handleReset} style={{ padding: '8px 16px', fontSize: '1rem', borderRadius: '6px' }}>⟳ Reset</Button>
+      {/* V3: Responsive Floating Toolbar */}
+      <div style={{
+        position: 'absolute',
+        bottom: isMobile ? '12px' : '16px',
+        right: isMobile ? '8px' : '16px',
+        left: isMobile ? '8px' : 'auto',
+        display: 'flex',
+        gap: isMobile ? '6px' : '8px',
+        zIndex: 2000,
+        justifyContent: isMobile ? 'center' : 'flex-end',
+        flexWrap: 'wrap'
+      }}>
+        <Button
+          variant="light"
+          onClick={() => handleZoom(true)}
+          style={{
+            padding: isMobile ? '10px 16px' : '8px 16px',
+            fontSize: isMobile ? '1.1rem' : '1.25rem',
+            borderRadius: '8px',
+            minWidth: isMobile ? '44px' : 'auto',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >+</Button>
+        <Button
+          variant="light"
+          onClick={() => handleZoom(false)}
+          style={{
+            padding: isMobile ? '10px 16px' : '8px 16px',
+            fontSize: isMobile ? '1.1rem' : '1.25rem',
+            borderRadius: '8px',
+            minWidth: isMobile ? '44px' : 'auto',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >−</Button>
+        <Button
+          variant="light"
+          onClick={() => setShowFilterModal(true)}
+          style={{
+            padding: isMobile ? '10px 12px' : '8px 16px',
+            fontSize: isMobile ? '0.85rem' : '1rem',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >{isMobile ? '🔍' : '▼ Filter'}</Button>
+        <Button
+          variant="light"
+          onClick={handleReset}
+          style={{
+            padding: isMobile ? '10px 12px' : '8px 16px',
+            fontSize: isMobile ? '0.85rem' : '1rem',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >{isMobile ? '↻' : '⟳ Reset'}</Button>
       </div>
-      {/* Filter Modal */}
-      <Modal show={showFilterModal} onHide={() => setShowFilterModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Filter Plots</Modal.Title>
+      {/* V3: Responsive Filter Modal */}
+      <Modal
+        show={showFilterModal}
+        onHide={() => setShowFilterModal(false)}
+        centered
+        fullscreen={isMobile ? true : undefined}
+        size={isMobile ? undefined : 'md'}
+      >
+        <Modal.Header closeButton style={{
+          background: isMobile ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : undefined,
+          color: isMobile ? 'white' : undefined
+        }}>
+          <Modal.Title style={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+            🔍 Filter Plots
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body style={{
+          padding: isMobile ? '1rem' : '1.5rem',
+          overflowY: 'auto'
+        }}>
           <Form onSubmit={handleFilterSubmit}>
             <Form.Group className="mb-3">
               <Form.Label>Plot Numbers (comma-separated)</Form.Label>
@@ -814,25 +1076,45 @@ const PlotViewer = () => {
                 onChange={(e) => setFilters({ ...filters, maxArea: e.target.value })}
               />
             </Form.Group>
-            <Button variant="primary" type="submit" style={{ background: 'linear-gradient(to right, #4f46e5, #3b82f6)', border: 'none' }}>
-              Apply Filters
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setFilters({ plotNos: '', status: 'all', facing: '', plotTypes: '', minArea: '', maxArea: '' })}
-              style={{ marginLeft: '8px' }}
-            >
-              Reset Filters
-            </Button>
+            <div style={{
+              display: 'flex',
+              gap: '0.5rem',
+              flexDirection: isMobile ? 'column' : 'row',
+              marginTop: '1rem'
+            }}>
+              <Button
+                variant="primary"
+                type="submit"
+                style={{
+                  background: 'linear-gradient(to right, #4f46e5, #3b82f6)',
+                  border: 'none',
+                  padding: isMobile ? '0.75rem' : '0.5rem 1rem',
+                  flex: isMobile ? 'none' : 1
+                }}
+              >
+                ✓ Apply Filters
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setFilters({ plotNos: '', status: 'all', facing: '', plotTypes: '', minArea: '', maxArea: '' })}
+                style={{
+                  padding: isMobile ? '0.75rem' : '0.5rem 1rem',
+                  flex: isMobile ? 'none' : 1
+                }}
+              >
+                ↻ Reset Filters
+              </Button>
+            </div>
           </Form>
         </Modal.Body>
       </Modal>
-      {/* Plot Dialog */}
+      {/* V3: Responsive Plot Dialog */}
       <Modal
         show={showPlotDialog}
         onHide={() => setShowPlotDialog(false)}
         centered
-        size="lg"
+        fullscreen={isMobile ? true : undefined}
+        size={isMobile ? undefined : 'lg'}
         style={{
           fontFamily: 'system-ui, -apple-system, sans-serif'
         }}
@@ -843,17 +1125,18 @@ const PlotViewer = () => {
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             border: 'none',
-            borderRadius: '0.375rem 0.375rem 0 0',
-            padding: '1.5rem'
+            borderRadius: isMobile ? '0' : '0.375rem 0.375rem 0 0',
+            padding: isMobile ? '1rem' : '1.5rem'
           }}
         >
           <Modal.Title
             style={{
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem'
+              gap: isMobile ? '0.5rem' : '0.75rem',
+              flexWrap: 'wrap'
             }}
           >
             📍 Plot {selectedPlot?.plotNo}
@@ -880,12 +1163,12 @@ const PlotViewer = () => {
           style={{
             padding: '0',
             background: '#f8f9fa',
-            maxHeight: '70vh',
+            maxHeight: isMobile ? 'none' : '70vh',
             overflowY: 'auto'
           }}
         >
           {selectedPlot && (
-            <div style={{ padding: '1.5rem' }}>
+            <div style={{ padding: isMobile ? '1rem' : '1.5rem' }}>
 
               {/* Price Highlight Card */}
               <div
@@ -893,9 +1176,9 @@ const PlotViewer = () => {
                   background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
                   color: 'white',
                   borderRadius: '0.75rem',
-                  padding: '2rem',
+                  padding: isMobile ? '1.25rem' : '2rem',
                   textAlign: 'center',
-                  marginBottom: '1.5rem',
+                  marginBottom: isMobile ? '1rem' : '1.5rem',
                   boxShadow: '0 0.5rem 2rem rgba(17, 153, 142, 0.3)'
                 }}
               >
@@ -1265,12 +1548,13 @@ const PlotViewer = () => {
           )}
         </Modal.Body>
       </Modal>
-      {/* Booking Modal */}
+      {/* V3: Responsive Booking Modal */}
       <Modal
         show={showBookingModal}
         onHide={() => setShowBookingModal(false)}
         centered
-        size="lg"
+        fullscreen={isMobile ? true : undefined}
+        size={isMobile ? undefined : 'lg'}
         style={{
           fontFamily: 'system-ui, -apple-system, sans-serif'
         }}
@@ -1281,17 +1565,17 @@ const PlotViewer = () => {
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             border: 'none',
-            borderRadius: '0.375rem 0.375rem 0 0',
-            padding: '1.5rem'
+            borderRadius: isMobile ? '0' : '0.375rem 0.375rem 0 0',
+            padding: isMobile ? '1rem' : '1.5rem'
           }}
         >
           <Modal.Title
             style={{
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem'
+              gap: isMobile ? '0.5rem' : '0.75rem'
             }}
           >
             🎯 Book Plot {selectedPlot?.plotNo}
@@ -1301,10 +1585,11 @@ const PlotViewer = () => {
         <Modal.Body
           style={{
             background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
-            padding: '0'
+            padding: '0',
+            overflowY: 'auto'
           }}
         >
-          <div style={{ padding: '2rem' }}>
+          <div style={{ padding: isMobile ? '1rem' : '2rem' }}>
 
             {/* Plot Summary Card */}
             <div

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Modal, Button, Form, Container, Badge, Spinner } from 'react-bootstrap';
+import { api, endpoints } from '../../utils/api';
 
-import API_BASE from '../../config';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const PlotViewer = () => {
   // REFS
@@ -80,24 +81,21 @@ const PlotViewer = () => {
     fetchVentures();
   }, []);
 
+  // V4: Fetch ventures using multi-tenant API
   const fetchVentures = async () => {
     try {
       setVenturesLoading(true);
-      const res = await fetch(`${API_BASE}/ventures/default`);
-      const defaultData = await res.json();
 
-      const allRes = await fetch(`${API_BASE}/ventures`);
-      const allData = await allRes.json();
+      // Use V1 API - get all ventures
+      const allData = await api.get(endpoints.ventures.list);
 
       if (allData.success) {
         setVentures(allData.data);
         // Set default or first venture
-        if (defaultData.success && defaultData.data) {
-          setSelectedVenture(defaultData.data);
-          setCurrentImageUrl(defaultData.data.imageUrl.startsWith('http') ? defaultData.data.imageUrl : `${API_BASE.replace('/api', '')}${defaultData.data.imageUrl}`);
-        } else if (allData.data.length > 0) {
-          setSelectedVenture(allData.data[0]);
-          setCurrentImageUrl(allData.data[0].imageUrl.startsWith('http') ? allData.data[0].imageUrl : `${API_BASE.replace('/api', '')}${allData.data[0].imageUrl}`);
+        const defaultVenture = allData.data.find(v => v.isDefault) || allData.data[0];
+        if (defaultVenture) {
+          setSelectedVenture(defaultVenture);
+          setCurrentImageUrl(defaultVenture.imageUrl.startsWith('http') ? defaultVenture.imageUrl : `${API_BASE}${defaultVenture.imageUrl}`);
         }
       }
     } catch (err) {
@@ -112,7 +110,7 @@ const PlotViewer = () => {
     const venture = ventures.find(v => v._id === ventureId);
     if (venture) {
       setSelectedVenture(venture);
-      setCurrentImageUrl(venture.imageUrl.startsWith('http') ? venture.imageUrl : `${API_BASE.replace('/api', '')}${venture.imageUrl}`);
+      setCurrentImageUrl(venture.imageUrl.startsWith('http') ? venture.imageUrl : `${API_BASE}${venture.imageUrl}`);
       setPlots([]);
     }
   };
@@ -157,10 +155,29 @@ const PlotViewer = () => {
     imageRef.current = img;
 
     img.onload = () => {
-      const width = img.width;
-      const height = img.height;
-      setImageWidth(width);
-      setImageHeight(height);
+      const originalWidth = img.width;
+      const originalHeight = img.height;
+      setImageWidth(originalWidth);
+      setImageHeight(originalHeight);
+
+      // Calculate display size that fits within the container while maintaining aspect ratio
+      const container = canvasWrapperRef.current;
+      const maxDisplayWidth = container ? container.clientWidth - 40 : 900; // 40px padding
+      const maxDisplayHeight = container ? container.clientHeight - 40 : 600;
+
+      const aspectRatio = originalWidth / originalHeight;
+      let displayWidth = maxDisplayWidth;
+      let displayHeight = displayWidth / aspectRatio;
+
+      // If height exceeds max, recalculate based on height
+      if (displayHeight > maxDisplayHeight) {
+        displayHeight = maxDisplayHeight;
+        displayWidth = displayHeight * aspectRatio;
+      }
+
+      // Round to avoid subpixel rendering issues
+      displayWidth = Math.round(displayWidth);
+      displayHeight = Math.round(displayHeight);
 
       // Scene - create new or reuse
       let scene = sceneRef.current;
@@ -174,27 +191,39 @@ const PlotViewer = () => {
         }
       }
 
-      // Camera: Centered on image
+      // Camera: Use original image coordinates for proper plot positioning
       const camera = new THREE.OrthographicCamera(
-        0, width, height, 0, -100, 100
+        0, originalWidth, originalHeight, 0, -100, 100
       );
       camera.position.set(0, 0, 10);
       cameraRef.current = camera;
       zoomRef.current = 1;
 
-      // Renderer
+      // Renderer - set to display size for proper aspect ratio
       if (!rendererRef.current) {
         const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true, antialias: true });
         rendererRef.current = renderer;
       }
-      rendererRef.current.setSize(width, height);
+      // Configure renderer for correct color output (preserves original image colors)
+      rendererRef.current.outputColorSpace = THREE.SRGBColorSpace;
+      // Set the renderer size to calculated display dimensions (maintains aspect ratio)
+      rendererRef.current.setSize(displayWidth, displayHeight);
+      // Scale the internal buffer to match the original image resolution for crisp rendering
+      rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-      // Image plane
-      const texture = new THREE.TextureLoader().load(currentImageUrl);
+      // Image plane - use original dimensions for proper coordinate mapping
+      const textureLoader = new THREE.TextureLoader();
+      const texture = textureLoader.load(currentImageUrl, (loadedTexture) => {
+        // Set texture color space to sRGB to match the output
+        loadedTexture.colorSpace = THREE.SRGBColorSpace;
+      });
+      // Also set color space immediately for consistency
+      texture.colorSpace = THREE.SRGBColorSpace;
+
       const material = new THREE.MeshBasicMaterial({ map: texture });
-      const geometry = new THREE.PlaneGeometry(width, height);
+      const geometry = new THREE.PlaneGeometry(originalWidth, originalHeight);
       const plane = new THREE.Mesh(geometry, material);
-      plane.position.set(width / 2, height / 2, -1);
+      plane.position.set(originalWidth / 2, originalHeight / 2, -1);
       scene.add(plane);
       imagePlaneRef.current = plane;
 
@@ -209,6 +238,7 @@ const PlotViewer = () => {
       };
       animate();
     };
+
 
     // Event listeners for interactions
     const handleMouseDown = (e) => {
@@ -472,13 +502,13 @@ const PlotViewer = () => {
       canvasRef.current?.removeEventListener('touchend', handleTouchEnd);
     };
     // eslint-disable-next-line
-  }, [currentImageUrl, selectedVenture]);
+  }, [currentImageUrl, selectedVenture, windowSize]);
 
   // 2. Fetch Plots and Poll for Updates
   const fetchPlots = () => {
     if (!selectedVenture) return;
 
-    const url = `${API_BASE}/plot?ventureId=${selectedVenture._id}`;
+    const url = `${API_BASE}/api/v1/plots?ventureId=${selectedVenture._id}`;
     fetch(url, {
       method: 'GET',
       headers: {
@@ -504,7 +534,7 @@ const PlotViewer = () => {
     if (!selectedVenture) return;
 
     const interval = setInterval(() => {
-      const url = `${API_BASE}/plot?ventureId=${selectedVenture._id}`;
+      const url = `${API_BASE}/api/v1/plots?ventureId=${selectedVenture._id}`;
       fetch(url, {
         method: 'GET',
         headers: {
@@ -592,12 +622,24 @@ const PlotViewer = () => {
   const updatePlotNumbers = () => {
     const camera = cameraRef.current;
     const canvas = canvasRef.current;
-    const wrapper = canvasWrapperRef.current;
-    if (!camera || !canvas || !wrapper) return;
+    const renderer = rendererRef.current;
+    if (!camera || !canvas || !renderer) return;
 
-    const rect = wrapper.getBoundingClientRect();
-    const w = rect.width;
-    const h = rect.height;
+    // Get the actual canvas dimensions from the renderer
+    const canvasRect = canvas.getBoundingClientRect();
+    const w = canvasRect.width;
+    const h = canvasRect.height;
+
+    // Position the label container to match the canvas
+    const labelContainer = plotLabelContainerRef.current;
+    if (labelContainer) {
+      labelContainer.style.width = `${w}px`;
+      labelContainer.style.height = `${h}px`;
+      // Center the label container over the canvas
+      labelContainer.style.position = 'absolute';
+      labelContainer.style.left = `${canvasRect.left - canvasWrapperRef.current.getBoundingClientRect().left}px`;
+      labelContainer.style.top = `${canvasRect.top - canvasWrapperRef.current.getBoundingClientRect().top}px`;
+    }
 
     plotNumberDivsRef.current.forEach(div => {
       const wx = parseFloat(div.dataset.worldX);
@@ -751,10 +793,17 @@ const PlotViewer = () => {
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:5000/api/enquire', {
+      const res = await fetch(`${API_BASE}/api/v1/enquiries`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, plotNo: selectedPlot.plotNo }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          ...formData,
+          plotNo: selectedPlot.plotNo,
+          ventureId: selectedVenture?._id
+        }),
       });
       if (res.ok) {
         setStatusMsg('Enquiry submitted successfully!');
@@ -762,7 +811,8 @@ const PlotViewer = () => {
         setShowBookingModal(false);
         setShowPlotDialog(false);
       } else {
-        setStatusMsg('Error submitting enquiry!');
+        const data = await res.json();
+        setStatusMsg(data.message || 'Error submitting enquiry!');
       }
     } catch (err) {
       setStatusMsg('Error submitting enquiry!');
@@ -894,21 +944,19 @@ const PlotViewer = () => {
           ref={canvasRef}
           style={{
             display: 'block',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            touchAction: 'none'
+            touchAction: 'none',
+            // Dimensions are set programmatically by Three.js renderer
+            // to maintain correct aspect ratio
           }}
         />
         <div
           ref={plotLabelContainerRef}
           style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
             pointerEvents: 'none',
             zIndex: 11
+            // Position and dimensions are set dynamically in updatePlotNumbers
+            // to match the actual canvas position
           }}
         />
         {/* Hover Overlay - Hide on mobile (use tap to select instead) */}

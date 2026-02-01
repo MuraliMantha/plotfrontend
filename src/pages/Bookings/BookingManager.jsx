@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Modal, Badge, Spinner, Table } from 'react-bootstrap';
 import jsPDF from 'jspdf';
+import { useAuth } from '../../contexts/AuthContext';
+import { api, endpoints } from '../../utils/api';
 
-import API_BASE from '../../config';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // V3 Theme Colors
 const colors = {
@@ -190,18 +192,14 @@ const BookingManager = () => {
         note: ''
     });
 
-    // Fetch bookings
+    // V4: Fetch bookings from multi-tenant API
     const fetchBookings = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
             const params = new URLSearchParams();
             if (statusFilter) params.append('status', statusFilter);
 
-            const res = await fetch(`${API_BASE}/bookings?${params}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(`${endpoints.bookings.list}?${params}`);
 
             if (data.success) {
                 setBookings(data.data);
@@ -213,14 +211,10 @@ const BookingManager = () => {
         }
     }, [statusFilter]);
 
-    // Fetch stats
+    // V4: Fetch stats from multi-tenant API
     const fetchStats = async () => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/stats`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(endpoints.bookings.stats);
             if (data.success) {
                 setStats(data.data);
             }
@@ -229,20 +223,13 @@ const BookingManager = () => {
         }
     };
 
-    // Fetch customers, plots, ventures for create modal
+    // V4: Fetch customers, plots, ventures for create modal
     const fetchFormData = async () => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const [customersRes, plotsRes, venturesRes] = await Promise.all([
-                fetch(`${API_BASE}/customers?limit=100`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/plot`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/ventures`, { headers: { Authorization: `Bearer ${token}` } })
-            ]);
-
             const [customersData, plotsData, venturesData] = await Promise.all([
-                customersRes.json(),
-                plotsRes.json(),
-                venturesRes.json()
+                api.get(`${endpoints.customers.list}?limit=100`),
+                api.get(endpoints.plots.list),
+                api.get(endpoints.ventures.list)
             ]);
 
             if (customersData.success) setCustomers(customersData.data);
@@ -260,14 +247,9 @@ const BookingManager = () => {
     };
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchBookings();
         fetchStats();
-    }, [fetchBookings, navigate]);
+    }, [fetchBookings]);
 
     // Open create modal
     const openCreateModal = () => {
@@ -289,21 +271,11 @@ const BookingManager = () => {
         }
     };
 
-    // Create booking
+    // V4: Create booking using multi-tenant API
     const handleCreateBooking = async (e) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(formData)
-            });
-
-            const data = await res.json();
+            const data = await api.post(endpoints.bookings.create, formData);
             if (data.success) {
                 setStatusMsg('Booking created successfully!');
                 setShowCreateModal(false);
@@ -319,23 +291,13 @@ const BookingManager = () => {
         setTimeout(() => setStatusMsg(''), 3000);
     };
 
-    // Add payment
+    // V4: Add payment using multi-tenant API
     const handleAddPayment = async (e) => {
         e.preventDefault();
         if (!selectedBooking) return;
 
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${selectedBooking._id}/payments`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(paymentData)
-            });
-
-            const data = await res.json();
+            const data = await api.post(endpoints.bookings.addPayment(selectedBooking._id), paymentData);
             if (data.success) {
                 setStatusMsg('Payment added successfully!');
                 setShowPaymentModal(false);
@@ -351,20 +313,11 @@ const BookingManager = () => {
         setTimeout(() => setStatusMsg(''), 3000);
     };
 
-    // Update booking status
+    // V4: Update booking status using multi-tenant API
     const updateStatus = async (bookingId, newStatus) => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${bookingId}/status`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ status: newStatus })
-            });
-
-            if (res.ok) {
+            const data = await api.patch(endpoints.bookings.updateStatus(bookingId), { status: newStatus });
+            if (data.success) {
                 setStatusMsg('Status updated!');
                 fetchBookings();
                 fetchStats();

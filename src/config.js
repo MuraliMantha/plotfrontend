@@ -1,8 +1,18 @@
-// Set this to true if you want to test production API while running frontend locally
-const FORCE_PRODUCTION = true;
+/**
+ * API Configuration
+ * 
+ * V4 Multi-Tenant SaaS - Uses environment variable for API URL
+ * Set VITE_API_URL in .env.local for local development
+ */
 
-const API_BASE = (window.location.hostname === 'localhost' && !FORCE_PRODUCTION)
-    ? 'https://plotbackend-xi.vercel.app/api'
-    : 'https://plotbackend-xi.vercel.app/api';
+// Get API base URL from environment or default to production
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+// Legacy API path (for backward compatibility during migration)
+export const LEGACY_API_BASE = API_BASE + '/api';
+
+// V1 API path (for new multi-tenant endpoints)
+export const V1_API_BASE = API_BASE + '/api/v1';
+
+// Export default for backward compatibility
 export default API_BASE;

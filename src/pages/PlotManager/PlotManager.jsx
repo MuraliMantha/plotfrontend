@@ -4,8 +4,10 @@ import { Table, Form, Container, Row, Col, Badge, Card, Button, Modal, Spinner }
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { useAuth } from '../../contexts/AuthContext';
+import { api, endpoints } from '../../utils/api';
 
-import API_BASE from '../../config';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // V2 Theme Colors
 const colors = {
@@ -236,33 +238,19 @@ const PlotManager = () => {
 
   // Fetch ventures on mount
   useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
     fetchVentures();
-  }, [navigate]);
+  }, []);
 
   // Fetch plots when venture changes
   useEffect(() => {
     fetchPlots();
   }, [selectedVentureId]);
 
+  // V4: Fetch ventures from multi-tenant API
   const fetchVentures = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/ventures`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setVentures(data);
-        const defaultVenture = data.find(v => v.isDefault);
-        if (defaultVenture) {
-          setSelectedVentureId(defaultVenture._id);
-        }
-      } else if (data.success && data.data) {
+      const data = await api.get(endpoints.ventures.list);
+      if (data.success && data.data) {
         setVentures(data.data);
         const defaultVenture = data.data.find(v => v.isDefault);
         if (defaultVenture) {
@@ -274,19 +262,16 @@ const PlotManager = () => {
     }
   };
 
+  // V4: Fetch plots from multi-tenant API
   const fetchPlots = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('admin_token');
-      const url = selectedVentureId
-        ? `${API_BASE}/plot?ventureId=${selectedVentureId}`
-        : `${API_BASE}/plot`;
+      const endpoint = selectedVentureId
+        ? endpoints.plots.byVenture(selectedVentureId)
+        : endpoints.plots.list;
 
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setPlots(data.features || []);
+      const data = await api.get(endpoint);
+      setPlots(data.features || data.data || []);
     } catch (err) {
       setStatusMsg('Error loading plots!');
     } finally {
@@ -323,22 +308,17 @@ const PlotManager = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // V4: Update plot using multi-tenant API
   const handleUpdatePlot = async () => {
-    const token = localStorage.getItem('admin_token');
     try {
-      const res = await fetch(`${API_BASE}/plot/${selectedPlot.properties._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...formData,
-          area: parseFloat(formData.area),
-          price: parseInt(formData.price),
-        }),
-      });
-      if (res.ok) {
+      const updateData = {
+        ...formData,
+        area: parseFloat(formData.area),
+        price: parseInt(formData.price),
+      };
+      const data = await api.put(endpoints.plots.update(selectedPlot.properties._id), updateData);
+
+      if (data.success) {
         const updatedPlots = plots.map((plot) =>
           plot.properties._id === selectedPlot.properties._id
             ? { ...plot, properties: { ...plot.properties, ...formData } }
@@ -356,14 +336,12 @@ const PlotManager = () => {
     }
   };
 
+  // V4: Delete plot using multi-tenant API
   const handleDeletePlot = async () => {
-    const token = localStorage.getItem('admin_token');
     try {
-      const res = await fetch(`${API_BASE}/plot/${selectedPlot.properties._id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
+      const data = await api.delete(endpoints.plots.delete(selectedPlot.properties._id));
+
+      if (data.success) {
         setPlots(plots.filter(p => p.properties._id !== selectedPlot.properties._id));
         setStatusMsg('Plot deleted successfully!');
         handleModalClose();

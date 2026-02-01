@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Badge, Spinner, Modal } from 'react-bootstrap';
-
-import API_BASE from '../../config';
+import { api, endpoints } from '../../utils/api';
 
 // V3 Theme Colors
 const colors = {
@@ -128,15 +127,11 @@ const CustomerDetail = () => {
     const [newNote, setNewNote] = useState('');
     const [statusMsg, setStatusMsg] = useState('');
 
-    // Fetch customer
+    // V4: Fetch customer using multi-tenant API
     const fetchCustomer = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/customers/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(endpoints.customers.detail(id));
 
             if (data.success) {
                 setCustomer(data.data);
@@ -152,28 +147,14 @@ const CustomerDetail = () => {
     }, [id, navigate]);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchCustomer();
-    }, [fetchCustomer, navigate]);
+    }, [fetchCustomer]);
 
-    // Update stage
+    // V4: Update stage using multi-tenant API
     const updateStage = async (newStage) => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/customers/${id}/stage`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ stage: newStage })
-            });
-
-            if (res.ok) {
+            const data = await api.patch(endpoints.customers.updateStage(id), { stage: newStage });
+            if (data.success) {
                 setCustomer({ ...customer, stage: newStage });
                 setStatusMsg('Stage updated!');
                 setTimeout(() => setStatusMsg(''), 3000);
@@ -183,26 +164,18 @@ const CustomerDetail = () => {
         }
     };
 
-    // Add note
+    // V4: Add note using multi-tenant API
     const addNote = async () => {
         if (!newNote.trim()) return;
 
         try {
-            const token = localStorage.getItem('admin_token');
             const updatedNotes = customer.notes
                 ? `${customer.notes}\n\n[${new Date().toLocaleString()}]\n${newNote}`
                 : `[${new Date().toLocaleString()}]\n${newNote}`;
 
-            const res = await fetch(`${API_BASE}/customers/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ notes: updatedNotes })
-            });
+            const data = await api.put(endpoints.customers.update(id), { notes: updatedNotes });
 
-            if (res.ok) {
+            if (data.success) {
                 setCustomer({ ...customer, notes: updatedNotes });
                 setShowNoteModal(false);
                 setNewNote('');
@@ -214,20 +187,12 @@ const CustomerDetail = () => {
         }
     };
 
-    // Update follow-up date
+    // V4: Update follow-up date using multi-tenant API
     const updateFollowUp = async (date) => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/customers/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ nextFollowUp: date || null })
-            });
+            const data = await api.put(endpoints.customers.update(id), { nextFollowUp: date || null });
 
-            if (res.ok) {
+            if (data.success) {
                 setCustomer({ ...customer, nextFollowUp: date || null });
                 setStatusMsg('Follow-up updated!');
                 setTimeout(() => setStatusMsg(''), 3000);

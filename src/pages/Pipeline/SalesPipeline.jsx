@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Spinner, Badge } from 'react-bootstrap';
-
-import API_BASE from '../../config';
+import { Container, Spinner } from 'react-bootstrap';
+import { api, endpoints } from '../../utils/api';
 
 // V3 Theme Colors
 const colors = {
@@ -67,21 +66,28 @@ const styles = {
     },
     pipelineContainer: {
         display: 'flex',
-        gap: '1rem',
+        gap: '1.25rem',
         overflowX: 'auto',
-        paddingBottom: '1rem',
+        overflowY: 'hidden',
+        padding: '0.5rem 0.5rem 1.5rem',
+        minHeight: 'calc(100vh - 250px)',
+        width: '100%',
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(99, 102, 241, 0.5) rgba(30, 41, 59, 0.3)',
+        msOverflowStyle: 'none',
     },
     column: {
-        minWidth: '280px',
-        maxWidth: '300px',
-        flex: '0 0 280px',
-        background: colors.cardBg,
+        minWidth: '300px',
+        width: '300px',
+        flex: '0 0 300px',
+        background: 'rgba(30, 41, 59, 0.4)',
         backdropFilter: 'blur(20px)',
-        borderRadius: '16px',
+        borderRadius: '20px',
         border: `1px solid ${colors.cardBorder}`,
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: 'calc(100vh - 200px)',
+        maxHeight: 'calc(100vh - 250px)',
+        transition: 'all 0.3s ease',
     },
     columnHeader: {
         padding: '1rem',
@@ -98,56 +104,63 @@ const styles = {
         color: colors.text,
     },
     columnBody: {
-        padding: '0.75rem',
+        padding: '0.875rem',
         overflowY: 'auto',
         flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
     },
     customerCard: {
-        background: 'rgba(15, 23, 42, 0.7)',
-        borderRadius: '10px',
-        padding: '0.875rem',
-        marginBottom: '0.625rem',
-        border: `1px solid ${colors.cardBorder}`,
-        cursor: 'pointer',
-        transition: 'all 0.2s ease',
+        background: 'rgba(15, 23, 42, 0.4)',
+        borderRadius: '12px',
+        padding: '1rem',
+        border: '1px solid rgba(255, 255, 255, 0.05)',
+        cursor: 'grab',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
     },
     avatar: {
-        width: '36px',
-        height: '36px',
-        borderRadius: '10px',
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: 'white',
-        fontWeight: '600',
-        fontSize: '0.85rem',
+        fontWeight: '700',
+        fontSize: '1rem',
         flexShrink: 0,
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)',
     },
     badge: {
-        borderRadius: '6px',
-        padding: '0.25rem 0.5rem',
-        fontSize: '0.65rem',
+        borderRadius: '8px',
+        padding: '0.35rem 0.65rem',
+        fontSize: '0.7rem',
         fontWeight: '600',
+        letterSpacing: '0.02em',
     },
     followUpBadge: {
-        background: 'rgba(245, 158, 11, 0.2)',
-        color: colors.warning,
-        borderRadius: '6px',
-        padding: '0.25rem 0.5rem',
-        fontSize: '0.65rem',
+        background: 'rgba(245, 158, 11, 0.15)',
+        color: '#fbbf24',
+        borderRadius: '8px',
+        padding: '0.35rem 0.65rem',
+        fontSize: '0.7rem',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '0.25rem',
+        gap: '0.35rem',
+        border: '1px solid rgba(245, 158, 11, 0.2)',
     },
     overdueBadge: {
-        background: 'rgba(239, 68, 68, 0.2)',
-        color: colors.danger,
-        borderRadius: '6px',
-        padding: '0.25rem 0.5rem',
-        fontSize: '0.65rem',
+        background: 'rgba(239, 68, 68, 0.15)',
+        color: '#f87171',
+        borderRadius: '8px',
+        padding: '0.35rem 0.65rem',
+        fontSize: '0.7rem',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '0.25rem',
+        gap: '0.35rem',
+        border: '1px solid rgba(239, 68, 68, 0.2)',
     },
     statsBadge: {
         background: 'rgba(255, 255, 255, 0.1)',
@@ -166,23 +179,15 @@ const SalesPipeline = () => {
     const [draggedCustomer, setDraggedCustomer] = useState(null);
     const [followUps, setFollowUps] = useState({ today: [], overdue: [] });
 
-    // Fetch pipeline data
-    const fetchPipeline = useCallback(async () => {
+    // V4: Fetch pipeline data using multi-tenant API
+    const fetchPipeline = useCallback(async (silent = false) => {
         try {
-            setLoading(true);
-            const token = localStorage.getItem('admin_token');
+            if (!silent) setLoading(true);
 
-            const [pipelineRes, followUpsRes] = await Promise.all([
-                fetch(`${API_BASE}/customers/pipeline`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                }),
-                fetch(`${API_BASE}/customers/follow-ups`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+            const [pipelineJson, followUpsJson] = await Promise.all([
+                api.get(endpoints.customers.pipeline),
+                api.get(`${endpoints.customers.list.replace('/customers', '/customers/follow-ups')}`)
             ]);
-
-            const pipelineJson = await pipelineRes.json();
-            const followUpsJson = await followUpsRes.json();
 
             if (pipelineJson.success) {
                 setPipelineData(pipelineJson.data);
@@ -196,18 +201,13 @@ const SalesPipeline = () => {
         } catch (error) {
             console.error('Error fetching pipeline:', error);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchPipeline();
-    }, [fetchPipeline, navigate]);
+    }, [fetchPipeline]);
 
     // Handle drag start
     const handleDragStart = (e, customer, fromStage) => {
@@ -221,7 +221,7 @@ const SalesPipeline = () => {
         e.dataTransfer.dropEffect = 'move';
     };
 
-    // Handle drop
+    // V4: Handle drop using multi-tenant API
     const handleDrop = async (e, toStage) => {
         e.preventDefault();
 
@@ -230,22 +230,29 @@ const SalesPipeline = () => {
             return;
         }
 
-        try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/customers/${draggedCustomer._id}/stage`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ stage: toStage })
-            });
+        // Optimistic update
+        const originalData = [...pipelineData];
+        const newPipelineData = pipelineData.map(s => {
+            if (s.stage === draggedCustomer.fromStage) {
+                return { ...s, count: s.count - 1, customers: s.customers.filter(c => c._id !== draggedCustomer._id) };
+            }
+            if (s.stage === toStage) {
+                return { ...s, count: s.count + 1, customers: [...s.customers, { ...draggedCustomer, stage: toStage }] };
+            }
+            return s;
+        });
+        setPipelineData(newPipelineData);
 
-            if (res.ok) {
-                fetchPipeline();
+        try {
+            const data = await api.patch(endpoints.customers.updateStage(draggedCustomer._id), { stage: toStage });
+            if (data.success) {
+                fetchPipeline(true); // Silent update to sync with server
+            } else {
+                setPipelineData(originalData); // Rollback on failure
             }
         } catch (error) {
             console.error('Error updating stage:', error);
+            setPipelineData(originalData); // Rollback on error
         }
 
         setDraggedCustomer(null);

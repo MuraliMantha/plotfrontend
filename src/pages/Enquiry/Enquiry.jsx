@@ -4,8 +4,10 @@ import { Table, Form, Container, Row, Col, Badge, Card, Button, Modal } from 're
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { useAuth } from '../../contexts/AuthContext';
+import { api, endpoints } from '../../utils/api';
 
-import API_BASE from '../../config';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // V3 Theme Colors
 const colors = {
@@ -199,40 +201,19 @@ const EnquiryManager = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Fetch data
+  // V4: Fetch data using multi-tenant API
   useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
-
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        // Fetch enquiries (new API returns { success, data })
-        const enquiriesRes = await fetch(`${API_BASE}/enquiries`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const enquiriesData = await enquiriesRes.json();
-        setEnquiries(enquiriesData.data || enquiriesData || []);
+        // Fetch enquiries using V1 API
+        const enquiriesData = await api.get(endpoints.enquiries.list);
+        setEnquiries(enquiriesData.data || []);
 
-        // Fetch stats
-        const statsRes = await fetch(`${API_BASE}/enquiries/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const statsData = await statsRes.json();
-        if (statsData.success) {
-          setStats(statsData.data);
-        }
-
-        // Fetch ventures
-        const venturesRes = await fetch(`${API_BASE}/ventures`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const venturesData = await venturesRes.json();
-        setVentures(Array.isArray(venturesData) ? venturesData : (venturesData.data || []));
+        // Fetch ventures using V1 API
+        const venturesData = await api.get(endpoints.ventures.list);
+        setVentures(venturesData.data || []);
 
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -243,7 +224,7 @@ const EnquiryManager = () => {
     };
 
     fetchData();
-  }, [navigate]);
+  }, []);
 
   // Filter enquiries
   const filteredEnquiries = enquiries.filter((enq) => {

@@ -5,8 +5,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-
-import API_BASE from '../../config';
+import { api, endpoints } from '../../utils/api';
 
 // V3 Theme Colors
 const colors = {
@@ -142,28 +141,18 @@ const Reports = () => {
         conversionRate: 0,
     });
 
-    // Fetch all data
+    // V4: Fetch all data using multi-tenant API
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
-
-            const [customersRes, bookingsRes, plotsRes, venturesRes, enquiriesRes, bookingStatsRes] = await Promise.all([
-                fetch(`${API_BASE}/customers?limit=500`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/bookings?limit=500`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/plot`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/ventures`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/enquiries`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_BASE}/bookings/stats`, { headers: { Authorization: `Bearer ${token}` } })
-            ]);
 
             const [customersData, bookingsData, plotsData, venturesData, enquiriesData, bookingStats] = await Promise.all([
-                customersRes.json(),
-                bookingsRes.json(),
-                plotsRes.json(),
-                venturesRes.json(),
-                enquiriesRes.json(),
-                bookingStatsRes.json()
+                api.get(`${endpoints.customers.list}?limit=500`),
+                api.get(`${endpoints.bookings.list}?limit=500`),
+                api.get(endpoints.plots.list),
+                api.get(endpoints.ventures.list),
+                api.get(endpoints.enquiries.list),
+                api.get(endpoints.bookings.stats)
             ]);
 
             const customersList = customersData.data || [];
@@ -201,13 +190,8 @@ const Reports = () => {
     }, []);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchData();
-    }, [fetchData, navigate]);
+    }, [fetchData]);
 
     // Format currency
     const formatCurrency = (amount) => {

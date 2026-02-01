@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Modal, Badge, Spinner } from 'react-bootstrap';
+import { useAuth } from '../../contexts/AuthContext';
+import { api, endpoints } from '../../utils/api';
 
-import API_BASE from '../../config';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // V3 Theme Colors
 const colors = {
@@ -208,11 +210,10 @@ const CustomerManager = () => {
     const [statusMsg, setStatusMsg] = useState('');
     const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 });
 
-    // Fetch customers
+    // V4: Fetch customers from multi-tenant API
     const fetchCustomers = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
             const params = new URLSearchParams();
             if (searchQuery) params.append('search', searchQuery);
             if (stageFilter) params.append('stage', stageFilter);
@@ -220,10 +221,7 @@ const CustomerManager = () => {
             params.append('page', pagination.page);
             params.append('limit', 20);
 
-            const res = await fetch(`${API_BASE}/customers?${params}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(`${endpoints.customers.list}?${params}`);
 
             if (data.success) {
                 setCustomers(data.data);
@@ -237,34 +235,20 @@ const CustomerManager = () => {
     }, [searchQuery, stageFilter, sourceFilter, pagination.page]);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchCustomers();
-    }, [fetchCustomers, navigate]);
+    }, [fetchCustomers]);
 
-    // Handle form submit
+    // V4: Handle form submit using multi-tenant API
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const token = localStorage.getItem('admin_token');
 
         try {
-            const url = editingCustomer
-                ? `${API_BASE}/customers/${editingCustomer._id}`
-                : `${API_BASE}/customers`;
-
-            const res = await fetch(url, {
-                method: editingCustomer ? 'PUT' : 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(formData)
-            });
-
-            const data = await res.json();
+            let data;
+            if (editingCustomer) {
+                data = await api.put(endpoints.customers.update(editingCustomer._id), formData);
+            } else {
+                data = await api.post(endpoints.customers.create, formData);
+            }
 
             if (data.success) {
                 setStatusMsg(editingCustomer ? 'Customer updated!' : 'Customer created!');

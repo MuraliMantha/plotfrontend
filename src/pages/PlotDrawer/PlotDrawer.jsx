@@ -58,6 +58,18 @@ const PlotDrawer = () => {
   // Stage dimensions - will be calculated based on actual image dimensions
   const [stageSize, setStageSize] = useState({ width: 900, height: 600 });
 
+  // Zoom and Pan state
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panMode, setPanMode] = useState(false); // Toggle between draw and pan mode
+  const stageRef = React.useRef(null);
+
+  // Zoom constraints
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 5;
+  const ZOOM_STEP = 0.2;
+
   // Maximum stage dimensions
   const MAX_STAGE_WIDTH = 900;
   const MAX_STAGE_HEIGHT = 600;
@@ -144,7 +156,7 @@ const PlotDrawer = () => {
     try {
       setVenturesLoading(true);
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/ventures`, {
+      const res = await fetch(`${API_BASE}/api/v1/ventures`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -163,7 +175,7 @@ const PlotDrawer = () => {
   const fetchPlotsForVenture = async (ventureId) => {
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/plot?ventureId=${ventureId}`, {
+      const res = await fetch(`${API_BASE}/api/v1/plots?ventureId=${ventureId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -187,13 +199,112 @@ const PlotDrawer = () => {
     setSelectedVenture(venture || null);
     setPoints([]);
     setShowForm(false);
+    // Reset zoom when changing ventures
+    setZoomLevel(1);
+    setStagePosition({ x: 0, y: 0 });
+  };
+
+  // Convert screen pointer position to stage coordinates (accounting for zoom and pan)
+  const getAdjustedPoint = (stage) => {
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return null;
+
+    // Transform screen coordinates to stage coordinates
+    // Formula: stageX = (screenX - stagePosition.x) / zoomLevel
+    const adjustedX = (pointerPos.x - stagePosition.x) / zoomLevel;
+    const adjustedY = (pointerPos.y - stagePosition.y) / zoomLevel;
+
+    return { x: adjustedX, y: adjustedY };
   };
 
   const handleCanvasClick = (e) => {
-    if (showForm || !selectedVenture) return;
+    if (showForm || !selectedVenture || panMode || isPanning) return;
+
     const stage = e.target.getStage();
-    const point = stage.getPointerPosition();
-    setPoints([...points, point.x, point.y]);
+    const point = getAdjustedPoint(stage);
+
+    if (point) {
+      // Clamp points to stage boundaries
+      const clampedX = Math.max(0, Math.min(point.x, stageSize.width));
+      const clampedY = Math.max(0, Math.min(point.y, stageSize.height));
+      setPoints([...points, clampedX, clampedY]);
+    }
+  };
+
+  // Zoom handlers
+  const handleZoomIn = () => {
+    setZoomLevel(prev => Math.min(prev + ZOOM_STEP, MAX_ZOOM));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => Math.max(prev - ZOOM_STEP, MIN_ZOOM));
+  };
+
+  const handleResetZoom = () => {
+    setZoomLevel(1);
+    setStagePosition({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e) => {
+    e.evt.preventDefault();
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const scaleBy = 1.1;
+    const oldScale = zoomLevel;
+    const pointer = stage.getPointerPosition();
+
+    // Calculate new scale
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+    // Clamp to min/max
+    newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+
+    // Calculate new position to zoom toward pointer
+    const mousePointTo = {
+      x: (pointer.x - stagePosition.x) / oldScale,
+      y: (pointer.y - stagePosition.y) / oldScale
+    };
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale
+    };
+
+    setZoomLevel(newScale);
+    setStagePosition(newPos);
+  };
+
+  // Pan handlers
+  const handleMouseDown = (e) => {
+    if (panMode || e.evt.button === 1 || e.evt.ctrlKey) { // Middle click or Ctrl+click
+      setIsPanning(true);
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isPanning) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+
+    // Calculate delta from last position
+    const dx = e.evt.movementX;
+    const dy = e.evt.movementY;
+
+    setStagePosition(prev => ({
+      x: prev.x + dx,
+      y: prev.y + dy
+    }));
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
   };
 
   const handleCompletePolygon = () => {
@@ -254,7 +365,7 @@ const PlotDrawer = () => {
       };
 
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/plot/`, {
+      const res = await fetch(`${API_BASE}/api/v1/plots`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -398,9 +509,12 @@ const PlotDrawer = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              borderBottom: '1px solid rgba(255,255,255,0.1)'
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
             }}>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
+              {/* Drawing Controls */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <Button
                   onClick={handleCompletePolygon}
                   disabled={points.length < 6 || showForm}
@@ -429,6 +543,66 @@ const PlotDrawer = () => {
                   style={{ borderRadius: '10px' }}
                 >
                   ✕ Clear
+                </Button>
+              </div>
+
+              {/* Zoom Controls */}
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.1)',
+                padding: '0.5rem 1rem',
+                borderRadius: '12px'
+              }}>
+                <Button
+                  variant={panMode ? "primary" : "outline-light"}
+                  onClick={() => setPanMode(!panMode)}
+                  style={{
+                    borderRadius: '8px',
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.85rem'
+                  }}
+                  title="Toggle Pan Mode (or hold Ctrl + drag)"
+                >
+                  ✋ {panMode ? 'Pan' : 'Draw'}
+                </Button>
+                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.3)' }} />
+                <Button
+                  variant="outline-light"
+                  onClick={handleZoomOut}
+                  disabled={zoomLevel <= MIN_ZOOM}
+                  style={{ borderRadius: '8px', padding: '0.4rem 0.75rem' }}
+                  title="Zoom Out"
+                >
+                  ➖
+                </Button>
+                <span style={{
+                  color: '#fff',
+                  fontWeight: '600',
+                  minWidth: '50px',
+                  textAlign: 'center',
+                  fontSize: '0.85rem'
+                }}>
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <Button
+                  variant="outline-light"
+                  onClick={handleZoomIn}
+                  disabled={zoomLevel >= MAX_ZOOM}
+                  style={{ borderRadius: '8px', padding: '0.4rem 0.75rem' }}
+                  title="Zoom In"
+                >
+                  ➕
+                </Button>
+                <Button
+                  variant="outline-light"
+                  onClick={handleResetZoom}
+                  disabled={zoomLevel === 1 && stagePosition.x === 0 && stagePosition.y === 0}
+                  style={{ borderRadius: '8px', padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                  title="Reset Zoom"
+                >
+                  ↺ Reset
                 </Button>
               </div>
 
@@ -464,12 +638,41 @@ const PlotDrawer = () => {
                   <Spinner animation="border" variant="primary" />
                 </div>
               ) : (
-                <div style={{ overflow: 'auto', maxHeight: '70vh' }}>
+                <div style={{ overflow: 'hidden', maxHeight: '70vh', position: 'relative' }}>
+                  {/* Zoom hint */}
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '10px',
+                    left: '10px',
+                    background: 'rgba(0,0,0,0.7)',
+                    color: '#fff',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '8px',
+                    fontSize: '0.75rem',
+                    zIndex: 10,
+                    pointerEvents: 'none'
+                  }}>
+                    🖱️ Scroll to zoom • Ctrl+drag to pan
+                  </div>
                   <Stage
+                    ref={stageRef}
                     width={stageSize.width}
                     height={stageSize.height}
                     onClick={handleCanvasClick}
-                    style={{ cursor: showForm ? 'default' : 'crosshair', display: 'block' }}
+                    onWheel={handleWheel}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    scaleX={zoomLevel}
+                    scaleY={zoomLevel}
+                    x={stagePosition.x}
+                    y={stagePosition.y}
+                    style={{
+                      cursor: panMode || isPanning ? 'grab' : (showForm ? 'default' : 'crosshair'),
+                      display: 'block',
+                      background: '#1a1a2e'
+                    }}
                   >
                     <Layer>
                       {image && <KonvaImage image={image} width={stageSize.width} height={stageSize.height} />}
@@ -795,6 +998,23 @@ const PlotDrawer = () => {
                       <span style={{ fontSize: '0.9rem' }}>{text}</span>
                     </div>
                   ))}
+                </div>
+
+                {/* Zoom Controls Info */}
+                <div style={{
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  borderRadius: '12px',
+                  padding: '1rem',
+                  marginBottom: '1rem',
+                  border: '1px solid rgba(59, 130, 246, 0.3)'
+                }}>
+                  <h6 style={{ marginBottom: '0.75rem', fontWeight: '600' }}>🔍 Zoom Controls</h6>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+                    <div style={{ marginBottom: '0.4rem' }}>🖱️ <b>Scroll</b> to zoom in/out</div>
+                    <div style={{ marginBottom: '0.4rem' }}>✋ <b>Ctrl+Drag</b> to pan</div>
+                    <div style={{ marginBottom: '0.4rem' }}>🔘 Use <b>toolbar buttons</b></div>
+                    <div>↺ <b>Reset</b> to original view</div>
+                  </div>
                 </div>
 
                 {/* Legend */}

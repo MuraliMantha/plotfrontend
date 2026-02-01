@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Form, Button, Alert } from 'react-bootstrap';
-import API_BASE from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const { login } = useAuth();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -16,17 +17,18 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        localStorage.setItem('admin_token', data.token);
-        navigate('/plot-management');
+      // V4: Use AuthContext login which handles token storage
+      const result = await login(email, password);
+
+      if (result.success) {
+        // Redirect based on role
+        if (result.user.role === 'super_admin') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
       } else {
-        setError('Invalid credentials. Please try again.');
+        setError(result.error || 'Invalid credentials. Please try again.');
       }
     } catch (err) {
       console.log(err);
@@ -128,7 +130,7 @@ const Login = () => {
             marginBottom: '0.5rem',
             letterSpacing: '-0.02em'
           }}>
-            Admin Portal
+            VentureCRM
           </h1>
 
           <p style={{
@@ -142,7 +144,7 @@ const Login = () => {
         </div>
 
         <Form onSubmit={handleSubmit}>
-          {/* Username Field */}
+          {/* Email Field */}
           <Form.Group className="mb-4">
             <Form.Label style={{
               fontSize: '0.875rem',
@@ -153,13 +155,13 @@ const Login = () => {
               alignItems: 'center',
               gap: '0.5rem'
             }}>
-              👤 Username
+              📧 Email
             </Form.Label>
             <Form.Control
-              type="text"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               style={{
                 padding: '0.875rem 1rem',

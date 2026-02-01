@@ -2,14 +2,18 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'https://esm.sh/three@0.155.0';
 import { Modal, Button, Form, Badge } from 'react-bootstrap';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const BookingModal = ({ showBookingModal, setShowBookingModal, formData, setFormData }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await fetch('http://localhost:3000/api/enquire', {
+      await fetch(`${API_BASE}/api/v1/enquiries`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
         body: JSON.stringify({
           name: formData.name,
           phone: formData.contact,

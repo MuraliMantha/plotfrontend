@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Badge, Spinner, Modal, Table } from 'react-bootstrap';
 import jsPDF from 'jspdf';
-
-import API_BASE from '../../config';
+import { api, endpoints } from '../../utils/api';
 
 // V3 Theme Colors
 const colors = {
@@ -202,15 +201,11 @@ const BookingDetail = () => {
         refundAmount: ''
     });
 
-    // Fetch booking
+    // V4: Fetch booking using multi-tenant API
     const fetchBooking = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(endpoints.bookings.detail(id));
 
             if (data.success) {
                 setBooking(data.data);
@@ -226,28 +221,14 @@ const BookingDetail = () => {
     }, [id, navigate]);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchBooking();
-    }, [fetchBooking, navigate]);
+    }, [fetchBooking]);
 
-    // Update status
+    // V4: Update status using multi-tenant API
     const updateStatus = async (newStatus) => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${id}/status`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ status: newStatus })
-            });
-
-            if (res.ok) {
+            const data = await api.patch(endpoints.bookings.updateStatus(id), { status: newStatus });
+            if (data.success) {
                 setStatusMsg('Status updated!');
                 fetchBooking();
             }
@@ -257,21 +238,11 @@ const BookingDetail = () => {
         setTimeout(() => setStatusMsg(''), 3000);
     };
 
-    // Add payment
+    // V4: Add payment using multi-tenant API
     const handleAddPayment = async (e) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${id}/payments`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(paymentData)
-            });
-
-            const data = await res.json();
+            const data = await api.post(endpoints.bookings.addPayment(id), paymentData);
             if (data.success) {
                 setStatusMsg('Payment added!');
                 setShowPaymentModal(false);
@@ -286,21 +257,11 @@ const BookingDetail = () => {
         setTimeout(() => setStatusMsg(''), 3000);
     };
 
-    // Cancel booking
+    // V4: Cancel booking using multi-tenant API
     const handleCancel = async (e) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/bookings/${id}/cancel`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(cancelData)
-            });
-
-            const data = await res.json();
+            const data = await api.post(endpoints.bookings.cancel(id), cancelData);
             if (data.success) {
                 setStatusMsg('Booking cancelled');
                 setShowCancelModal(false);

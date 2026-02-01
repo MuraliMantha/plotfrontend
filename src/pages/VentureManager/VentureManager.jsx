@@ -2,7 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Button, Form, Modal, Badge, Spinner, Alert } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Text, Group } from 'react-konva';
-import API_BASE from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
+import { api, endpoints } from '../../utils/api';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // Custom hook for dynamic image loading for Konva
 const useKonvaImage = (url) => {
@@ -81,15 +84,11 @@ const VentureManager = () => {
         }
     };
 
-    // Fetch ventures
+    // Fetch ventures (V4: Uses multi-tenant API)
     const fetchVentures = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/ventures`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await api.get(endpoints.ventures.list);
             if (data.success) {
                 setVentures(data.data);
             }
@@ -101,13 +100,8 @@ const VentureManager = () => {
     }, []);
 
     useEffect(() => {
-        const token = localStorage.getItem('admin_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
         fetchVentures();
-    }, [navigate, fetchVentures]);
+    }, [fetchVentures]);
 
     // Handle image upload
     const handleImageUpload = (e) => {
@@ -131,7 +125,7 @@ const VentureManager = () => {
         reader.readAsDataURL(file);
     };
 
-    // Create venture
+    // Create venture (V4: Uses multi-tenant API)
     const handleCreateVenture = async () => {
         if (!createForm.name || !createForm.imageFile) {
             setError('Name and image are required');
@@ -149,7 +143,8 @@ const VentureManager = () => {
             formData.append('bounds', JSON.stringify(createForm.bounds));
             formData.append('location', JSON.stringify(createForm.location));
 
-            const res = await fetch(`${API_BASE}/ventures`, {
+            // V4: Use new API endpoint
+            const res = await fetch(`${API_BASE}${endpoints.ventures.create}`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`
@@ -255,17 +250,7 @@ const VentureManager = () => {
 
         setSubmitting(true);
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/ventures/${selectedVenture._id}/calibration`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(updatedCalibration)
-            });
-
-            const data = await res.json();
+            const data = await api.put(endpoints.ventures.calibration(selectedVenture._id), updatedCalibration);
             if (data.success) {
                 setSuccess('Calibration saved successfully!');
                 setShowCalibrationModal(false);
@@ -275,7 +260,7 @@ const VentureManager = () => {
                 setError(data.message || 'Failed to save calibration');
             }
         } catch (err) {
-            setError('Network error. Please try again.');
+            setError(err.message || 'Network error. Please try again.');
         } finally {
             setSubmitting(false);
         }
@@ -284,20 +269,14 @@ const VentureManager = () => {
     // Set default venture
     const handleSetDefault = async (ventureId) => {
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/ventures/${ventureId}/set-default`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            const data = await res.json();
+            const data = await api.put(endpoints.ventures.setDefault(ventureId));
             if (data.success) {
                 setSuccess('Default venture updated!');
                 fetchVentures();
                 setTimeout(() => setSuccess(''), 3000);
             }
         } catch (err) {
-            setError('Failed to set default venture');
+            setError(err.message || 'Failed to set default venture');
         }
     };
 
@@ -308,20 +287,14 @@ const VentureManager = () => {
         }
 
         try {
-            const token = localStorage.getItem('admin_token');
-            const res = await fetch(`${API_BASE}/ventures/${ventureId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            const data = await res.json();
+            const data = await api.delete(endpoints.ventures.delete(ventureId));
             if (data.success) {
                 setSuccess('Venture deleted successfully!');
                 fetchVentures();
                 setTimeout(() => setSuccess(''), 3000);
             }
         } catch (err) {
-            setError('Failed to delete venture');
+            setError(err.message || 'Failed to delete venture');
         }
     };
 

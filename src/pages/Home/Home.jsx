@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, Button, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-
+import { api, endpoints } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 import API_BASE from '../../config';
 
 // V3 Theme Colors
@@ -21,6 +22,7 @@ const colors = {
 };
 
 const Home = () => {
+  const { tenant, user } = useAuth();
   const [ventures, setVentures] = useState([]);
   const [stats, setStats] = useState({
     totalVentures: 0,
@@ -42,28 +44,17 @@ const Home = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // V4: Fetch data using multi-tenant API
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('admin_token');
 
-      // Fetch ventures
-      const venturesRes = await fetch(`${API_BASE}/ventures`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const venturesData = await venturesRes.json();
-
-      // Fetch plots
-      const plotsRes = await fetch(`${API_BASE}/plot`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const plotsData = await plotsRes.json();
-
-      // Fetch enquiries
-      const enquiriesRes = await fetch(`${API_BASE}/enquiries`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const enquiriesData = await enquiriesRes.json();
+      // Fetch ventures, plots, and enquiries in parallel using V1 API
+      const [venturesData, plotsData, enquiriesData] = await Promise.all([
+        api.get(endpoints.ventures.list),
+        api.get(endpoints.plots.list),
+        api.get(endpoints.enquiries.list)
+      ]);
 
       // Handle both array and object responses
       const venturesList = Array.isArray(venturesData) ? venturesData : (venturesData.data || []);

@@ -132,7 +132,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
 };
 
 /**
- * Super Admin Layout - Platform management interface
+ * Super Admin Layout - Platform management interface ....
  */
 const SuperAdminLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -181,7 +181,7 @@ const SuperAdminLayout = ({ children }) => {
           }}>
             <span style={{ fontSize: '1.5rem' }}>🏛️</span>
             VentureCRM
-          </h2>
+          </h2> 
           <div style={{
             marginTop: '0.5rem',
             display: 'flex',

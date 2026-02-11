@@ -130,7 +130,7 @@ const Login = () => {
             marginBottom: '0.5rem',
             letterSpacing: '-0.02em'
           }}>
-            VentureCRM
+            Plot3D
           </h1>
 
           <p style={{

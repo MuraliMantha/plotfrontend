@@ -180,8 +180,8 @@ const SuperAdminLayout = ({ children }) => {
             gap: '0.5rem'
           }}>
             <span style={{ fontSize: '1.5rem' }}>🏛️</span>
-            VentureCRM
-          </h2> 
+            Plot3D
+          </h2>
           <div style={{
             marginTop: '0.5rem',
             display: 'flex',
@@ -359,7 +359,7 @@ const TenantLayout = ({ children }) => {
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            ✨ VentureCRM
+            ✨ Plot3D
           </h2>
           {tenant && (
             <div style={{
@@ -620,7 +620,7 @@ const App = () => {
       }}>
         <div style={{ textAlign: 'center', color: '#fff' }}>
           <div className="spinner-border text-primary mb-3" role="status" />
-          <p style={{ color: '#94a3b8' }}>Loading VentureCRM...</p>
+          <p style={{ color: '#94a3b8' }}>Loading Plot3D...</p>
         </div>
       </div>
     );

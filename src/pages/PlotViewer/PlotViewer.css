@@ -1,15 +1,29 @@
 .plot-number {
   position: absolute;
-  color: #000;
-  background: rgba(255, 255, 255, 0.8);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: bold;
+  color: #fff !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  /* ensure no box padding */
+  border-radius: 0 !important;
+  /* ensure no rounded corners */
+  /* text-shadow: 0 0 3px rgba(0, 0, 0, 0.8); */
+  font-size: 6px;
+  font-weight: 700;
   pointer-events: none;
   z-index: 12;
-  transform: translate(-50%, -50%); /* ✅ Centered positioning */
+  transform: translate(-50%, -50%);
 }
+
+/* just-in-case pseudo elements */
+.plot-number::before,
+.plot-number::after {
+  display: none !important;
+}
+
 
 .status-bar {
   display: flex;
@@ -25,11 +39,34 @@
   font-size: 14px;
 }
 
-.status-total { background: #e2e8f0; }
-.status-available { background: #c6f6d5; }
-.status-hold { background: #fefcbf; }
-.status-sold { background: #fed7d7; }
-.status-tentative { background: #fed7e2; }
-.status-cip { background: #e9d8fd; }
-.status-booked { background: #fbd38d; }
-.status-reserved { background: #bee3f8; }
+.status-total {
+  background: #e2e8f0;
+}
+
+.status-available {
+  background: #c6f6d5;
+}
+
+.status-hold {
+  background: #fefcbf;
+}
+
+.status-sold {
+  background: #fed7d7;
+}
+
+.status-tentative {
+  background: #fed7e2;
+}
+
+.status-cip {
+  background: #e9d8fd;
+}
+
+.status-booked {
+  background: #fbd38d;
+}
+
+.status-reserved {
+  background: #bee3f8;
+}

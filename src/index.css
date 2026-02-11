@@ -722,8 +722,8 @@ body:has([style*="background: #f8fafc"]) .form-select,
 /* ============ Plot Viewer Specific ============ */
 /* Ensure plot viewer elements have proper colors */
 .plot-number {
-  color: #000 !important;
-  background: rgba(255, 255, 255, 0.9) !important;
+  color: #fff !important;
+  /* background: rgba(255, 255, 255, 0.9) !important; */
 }
 
 .status-bar {

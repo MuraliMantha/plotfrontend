@@ -67,7 +67,7 @@ const PlotDrawer = () => {
 
   // Zoom constraints
   const MIN_ZOOM = 0.5;
-  const MAX_ZOOM = 5;
+  const MAX_ZOOM = 15;
   const ZOOM_STEP = 0.2;
 
   // Maximum stage dimensions
@@ -118,6 +118,24 @@ const PlotDrawer = () => {
       stagePoints.push(stageX, stageY);
     }
     return stagePoints;
+  };
+
+  // Calculate center of polygon for label positioning
+  const getPolygonCenter = (points) => {
+    if (!points || points.length < 2) return { x: 0, y: 0 };
+    let minX = points[0], maxX = points[0], minY = points[1], maxY = points[1];
+
+    for (let i = 2; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+
+    return {
+      x: minX + (maxX - minX) / 2,
+      y: minY + (maxY - minY) / 2
+    };
   };
 
   useEffect(() => {
@@ -682,6 +700,9 @@ const PlotDrawer = () => {
                         // Convert raw points from original image coords to stage coords
                         const stagePoints = convertRawPointsToStage(poly.rawPoints);
                         if (stagePoints.length === 0) return null;
+
+                        const center = getPolygonCenter(stagePoints);
+
                         return (
                           <Group key={poly.id}>
                             <Line
@@ -692,12 +713,15 @@ const PlotDrawer = () => {
                               fill={`${getStatusColor(poly.status)}40`}
                             />
                             <Text
-                              x={stagePoints[0] || 0}
-                              y={(stagePoints[1] || 0) - 18}
-                              text={`#${poly.plotNo}`}
-                              fontSize={11}
+                              x={center.x}
+                              y={center.y}
+                              text={poly.plotNo.toString()}
+                              fontSize={12}
                               fill="#fff"
                               fontStyle="bold"
+                              offsetX={poly.plotNo.toString().length * 4}
+                              offsetY={6}
+                              listening={false}
                             />
                           </Group>
                         );
@@ -712,10 +736,10 @@ const PlotDrawer = () => {
                               key={i}
                               x={points[i * 2]}
                               y={points[i * 2 + 1]}
-                              radius={6}
+                              radius={3}
                               fill="#3b82f6"
                               stroke="#fff"
-                              strokeWidth={2}
+                              strokeWidth={1}
                             />
                           ))}
                         </>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Modal, Button, Form, Container, Badge, Spinner } from 'react-bootstrap';
 import { api, endpoints } from '../../utils/api';
-
+import './PlotViewer.css';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const PlotViewer = () => {
@@ -56,7 +56,7 @@ const PlotViewer = () => {
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const minZoom = 0.4;
-  const maxZoom = 2.5;
+  const maxZoom = 15;
 
   // For overlay
   const [hoverData, setHoverData] = useState(null);
@@ -600,15 +600,33 @@ const PlotViewer = () => {
       div.innerText = feature.properties.plotNo;
       div.dataset.worldX = centroid[0];
       div.dataset.worldY = imageRef.current.height - centroid[1];
-      div.style.position = 'absolute';
-      div.style.pointerEvents = 'none';
-      div.style.color = '#000';
-      div.style.background = 'rgba(255,255,255,0.82)';
-      div.style.padding = '4px 8px';
-      div.style.borderRadius = '4px';
-      div.style.fontSize = '12px';
-      div.style.fontWeight = 'bold';
-      div.style.userSelect = 'none';
+
+      // // Use inline styles to fully neutralize any pill/box coming from other rules
+      // Object.assign(div.style, {
+      //   position: 'absolute',
+      //   pointerEvents: 'none',
+      //   userSelect: 'none',
+
+      //   /* remove any box visuals */
+      //   background: 'transparent',
+      //   backgroundColor: 'transparent',
+      //   boxShadow: 'none',
+      //   border: 'none',
+      //   outline: 'none',
+      //   padding: '0',
+      //   borderRadius: '0',
+
+      //   /* text styling */
+      //   color: '#ffffff',
+      //   fontSize: '12px',
+      //   fontWeight: '700',
+      //   textShadow: '0 0 3px rgba(0,0,0,0.9)',
+
+      //   /* positioning - will be overwritten by updatePlotNumbers */
+      //   transform: 'translate(-50%, -50%)',
+      //   zIndex: 12
+      // });
+
       plotLabelContainerRef.current && plotLabelContainerRef.current.appendChild(div);
       plotNumberDivsRef.current.push(div);
     });
@@ -655,7 +673,7 @@ const PlotViewer = () => {
         div.style.display = 'block';
         div.style.left = `${screenX}px`;
         div.style.top = `${screenY}px`;
-        div.style.transform = 'translate(-50%, -50%)';
+        div.style.transform = `translate(-50%, -50%) scale(${zoomRef.current})`;
       }
     });
   };

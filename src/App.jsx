@@ -32,6 +32,7 @@ import BookingManager from './pages/Bookings/BookingManager';
 import BookingDetail from './pages/Bookings/BookingDetail';
 import Reports from './pages/Reports/Reports';
 import TenantSettings from './pages/Settings/TenantSettings';
+import EmbedCode from './pages/EmbedCode/EmbedCode';
 
 // Super Admin Pages
 import { SuperAdminDashboard, TenantManager, TenantDetail } from './pages/SuperAdmin';
@@ -83,6 +84,7 @@ const TENANT_NAV = [
       { path: '/reports', icon: '📈', label: 'Reports', description: 'Analytics & insights' },
       { path: '/plot-viewer', icon: '🔍', label: 'Plot Viewer', description: 'Interactive map' },
       { path: '/plot-drawer', icon: '✏️', label: 'Plot Drawer', description: 'Draw plots' },
+      { path: '/embed-code', icon: '📦', label: 'Embed Code', description: 'Widget integration', badge: 'NEW' },
     ]
   },
   { path: '/settings', icon: '⚙️', label: 'Settings', description: 'Organization settings' },
@@ -180,7 +182,7 @@ const SuperAdminLayout = ({ children }) => {
             gap: '0.5rem'
           }}>
             <span style={{ fontSize: '1.5rem' }}>🏛️</span>
-            Plot3D
+            VentureCRM
           </h2>
           <div style={{
             marginTop: '0.5rem',
@@ -753,6 +755,11 @@ const App = () => {
           <Route path="/plot-drawer" element={
             <ProtectedRoute>
               <PlotDrawer />
+            </ProtectedRoute>
+          } />
+          <Route path="/embed-code" element={
+            <ProtectedRoute>
+              <EmbedCode />
             </ProtectedRoute>
           } />
           <Route path="/about" element={<About />} />

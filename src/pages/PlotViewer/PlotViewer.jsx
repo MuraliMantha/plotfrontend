@@ -772,7 +772,7 @@ const PlotViewer = () => {
   // 8. Filter Plots
   const handleFilterSubmit = (e) => {
     e.preventDefault();
-    fetch('http://localhost:5000/api/plot', {
+    fetch(`${API_BASE}/api/plot`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
